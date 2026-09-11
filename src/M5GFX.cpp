@@ -10,7 +10,11 @@
 #include <soc/soc.h>
 #include <nvs.h>
 #include <esp_log.h>
-#include <driver/i2c.h>
+#if __has_include(<driver/i2c_master.h>)
+ #include <driver/i2c_master.h>
+#else
+ #include <driver/i2c.h>
+#endif
 #include <soc/efuse_reg.h>
 #include <soc/gpio_reg.h>
 
