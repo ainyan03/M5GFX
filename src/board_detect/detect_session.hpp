@@ -56,8 +56,10 @@ namespace board_detect
         kind = outcome.candidate_kind;
       }
       outcome.result.candidate = candidate;
+      // Candidate metadata follows its pointer even after confirmed setup fails.
+      outcome.candidate_kind = kind;
       if (outcome.verdict != verdict_t::confirmed && candidate != nullptr)
-      { outcome.verdict = verdict_t::candidate; outcome.candidate_kind = kind; }
+      { outcome.verdict = verdict_t::candidate; }
       // A mismatched preference retries until the final attempt. A retained
       // power failure skips member selection; a retry can run refinement once
       // power preparation succeeds and apply the observed member preference.

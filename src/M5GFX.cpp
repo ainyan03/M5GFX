@@ -995,6 +995,7 @@ namespace m5gfx
     const bool accepted = board_detect::finalize_prepared_result(outcome, request.preferred);
     if (!prepared)
     {
+      // Preserve the matched family's identification; adoption still failed.
       ESP_LOGW(LIBRARY_NAME, "[Autodetect] prepare failed for detected board:%u",
                static_cast<unsigned>(result.def->id));
       outcome.reason = board_detect::fail_reason_t::prepare_failed;

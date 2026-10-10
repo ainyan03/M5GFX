@@ -65,6 +65,23 @@ int main()
   });
   assert(out.attempts == 5 && out.result.candidate == &member && out.candidate_kind == candidate_kind_t::provisional);
   assert(out.verdict == verdict_t::candidate);
+  // Retained candidate kind survives every confirmed-but-failed setup reason.
+  for (auto kind : {candidate_kind_t::weak, candidate_kind_t::provisional})
+  for (auto failure : {fail_reason_t::prepare_failed, fail_reason_t::construct_failed, fail_reason_t::adopt_failed}) {
+    out = run_detection_session(request, [&](const detect_request_t& r, bool) {
+      detect_outcome_t result;
+      if (r.attempt == 0) {
+        result.verdict = verdict_t::candidate; result.candidate_kind = kind;
+        result.result.candidate = &weak;
+      } else {
+        result.result.def = &member; finalize_prepared_result(result, 0);
+        result.reason = failure;
+      }
+      return result;
+    });
+    assert(out.attempts == 5 && out.verdict == verdict_t::confirmed && !out.setup_succeeded);
+    assert(out.result.candidate == &weak && out.candidate_kind == kind && !should_persist_detection(out, 0));
+  }
   // An early mismatch may refine successfully on the next attempt.
   request.preferred = other.id;
   out = run_detection_session(request, [&](const detect_request_t& r, bool) {
