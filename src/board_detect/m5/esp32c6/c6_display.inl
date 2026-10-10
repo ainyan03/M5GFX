@@ -80,7 +80,7 @@ public:
        || !is_pi4io(value))
       {
         // Presence and GPIO18 only suggest UnitC6L; never construct on a hint.
-        ctx.candidate = &desc_unitc6l.def;
+        if (ctx.candidate == nullptr) { ctx.candidate = &desc_unitc6l.def; }
         return false;
       }
       result->assign(&desc_unitc6l);

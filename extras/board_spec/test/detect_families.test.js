@@ -141,6 +141,12 @@ int main() {
  assert(out.setup_succeeded==(bus&&response));assert(!bus||response||out.result.candidate==&desc_unitc6l.def);
  assert(should_persist_detection(out,0)==(bus&&response));assert(out.attempts==(!bus||response?1:5));
  }
+ present=true;responds=false;high=true;c6_t detector;probe_ctx_t ctx;board_result_t result;
+ ctx.candidate=&desc_core2.def;
+ assert(detector.signature(ctx));assert(!detector.confirm(ctx,&result));
+ assert(ctx.candidate==&desc_core2.def);
+ ctx.candidate=nullptr;assert(!detector.confirm(ctx,&result));
+ assert(ctx.candidate==&desc_unitc6l.def);
 }
 `,"C6 weak candidate");
 });
