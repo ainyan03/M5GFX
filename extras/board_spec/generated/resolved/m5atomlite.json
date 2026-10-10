@@ -12,6 +12,10 @@
       ],
       "note": "IR transmitter GPIO from the official pin map."
     },
+    "18": {
+      "roles": [],
+      "note": "Unconnected GPIO sampled by the Atom family exclusion gate."
+    },
     "21": {
       "roles": [
         "bus:internal_i2c.scl"

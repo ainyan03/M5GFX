@@ -199,10 +199,10 @@ namespace lgfx {enum class pin_mode_t {input,input_pullup,input_pulldown};pin_mo
 void esp_rom_delay_us(int){}
 namespace atom_touch {bool measure(std::uint32_t* a,std::uint32_t* b){++touch_scans;*a=100;*b=25;return true;}void clear_led(){}}
 constexpr unsigned pull_release_us=128;
-bool sd_match=false;int g18_class=2,g12_class=0,g32_class=2;unsigned g32_reads=0;
+int sd_class=2;int g18_class=2,g12_class=0,g32_class=2;unsigned g32_reads=0;
 pin_pull_result_t probe_pin_pulls(hw_ctx_t&,std::uint64_t mask,unsigned release=0) {
  pin_pull_result_t p;
- int c=mask==(1ULL<<18)?g18_class:mask==(1ULL<<12)?g12_class:mask==(1ULL<<32)?g32_class:sd_match?3:2;
+ int c=mask==(1ULL<<18)?g18_class:mask==(1ULL<<12)?g12_class:mask==(1ULL<<32)?g32_class:sd_class;
  if(mask==(1ULL<<32)){++g32_reads;assert(release==128);}
  if(c==3||c==1)p.pulldown_high=mask;
  if(c>=2)p.pullup_high=mask;
@@ -227,10 +227,9 @@ int main() {
  assert(out.attempts==1&&out.candidate_kind==candidate_kind_t::provisional);assert(!should_persist_detection(out,0));
  for(bool final:{false,true}) for(bool hinted:{false,true}) {
  hw_ctx_t ctx;ctx.final_attempt=final;ctx.hint=hinted?14:0;
- for(int bias=0;bias<7;++bias){g32_class=bias;sd_match=false;assert(stack_signature(ctx)==(bias==0||bias==4));}
- // Pull-dependent release returning low is the cold weak-down case.
- g32_class=4;assert(stack_signature(ctx));
- sd_match=true;g32_reads=0;assert(stack_signature(ctx));assert(g32_reads==0);
+ for(int bias=0;bias<7;++bias)for(int sd=0;sd<4;++sd){g32_class=bias;sd_class=sd;assert(stack_signature(ctx)==(sd==3));assert(g32_reads==0);}
+
+ sd_class=3;g32_reads=0;assert(stack_signature(ctx));assert(g32_reads==0);
  }
  g2_high=false;voice=true;atom_t excluded;board_result_t excluded_result;hw_ctx_t excluded_ctx;
  assert(!excluded.probe(excluded_ctx,&excluded_result));g2_high=true;
@@ -569,7 +568,7 @@ int main(){for(const auto* desc:{&desc_core2,&desc_pm1})for(bool signature:{fals
 `,"identified family stops subsequent probes");
 });
 
-test("production Stack confirmation requires LCD ID and persists new physical evidence", async () => {
+test("production Stack confirmation requires LCD ID and persists confirmed identity", async () => {
  const source=await fs.readFile(path.join(src,"m5/esp32_d0wdq6.inl"),"utf8");
  const confirm=body(source.slice(source.indexOf('class stack_family_detector_t')),'bool confirm(');
  const fixture=common.replace('struct board_desc_t {board_def_t def;};',

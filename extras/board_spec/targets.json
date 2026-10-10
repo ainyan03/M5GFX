@@ -25,7 +25,6 @@
       "m5stack": {
         "chip": "esp32_d0wdq6", "legacy_board_id": 1, "cpp_namespace": "stack", "board_enum": "board_M5Stack", "desc_name": "desc_stack",
         "wiring_fields": ["display", "shared_sd", "hold"], "reset": "display_rst", "wiring_output": "esp32_d0wdq6_wiring.hpp",
-        "probe_pins": [32],
         "options": [{ "name": "ips", "bit": 0, "select": { "lcd": "ips" } }]
       },
       "m5paper": {
@@ -54,7 +53,7 @@
       },
       "m5atomlite": {
         "chip": "esp32_d0wdq6", "legacy_board_id": 128, "cpp_namespace": "atomlite", "board_enum": "board_M5AtomLite", "desc_name": "desc_atomlite",
-        "wiring_fields": [], "probe_pins": [25], "wiring_output": "esp32_d0wdq6_wiring.hpp"
+        "wiring_fields": [], "probe_pins": [12, 18, 25], "wiring_output": "esp32_d0wdq6_wiring.hpp"
       },
       "m5atomu": {
         "chip": "esp32_d0wdq6", "legacy_board_id": 130, "board_enum": "board_M5AtomU", "desc_name": "desc_atomu"

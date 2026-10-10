@@ -528,29 +528,23 @@ namespace m5
        || !startup_detail::gpio_valid(desc_stack.display.dc)) { return false; }
       std::uint64_t sd_mask;
       if (!detail::sd_pull_mask(desc_stack, &sd_mask)) { return false; }
-      auto& values = ctx.detector_workspace.values;
       startup_detail::pin_level(desc_stack.display.cs, true);
       const auto pulls = probe_pin_pulls(ctx, sd_mask);
-      values[0] = pulls.pulldown_high;
-      values[1] = pulls.pullup_high;
       ctx.transaction->restore_start(desc_stack.display.cs);
-      const bool pull_match = values[0] == sd_mask && values[1] == sd_mask;
+      const bool pull_match = pulls.pulldown_high == sd_mask && pulls.pullup_high == sd_mask;
       if (!pull_match)
       {
         ESP_LOGD("board_detect_m5",
                  "M5Stack pull signature mismatch pd=%08x%08x pu=%08x%08x",
-                 static_cast<unsigned>(values[0] >> 32),
-                 static_cast<unsigned>(values[0]),
-                 static_cast<unsigned>(values[1] >> 32),
-                 static_cast<unsigned>(values[1]));
+                 static_cast<unsigned>(pulls.pulldown_high >> 32),
+                 static_cast<unsigned>(pulls.pulldown_high),
+                 static_cast<unsigned>(pulls.pullup_high >> 32),
+                 static_cast<unsigned>(pulls.pullup_high));
       }
-      if (pull_match) { return true; }
-      // Backlight bias also identifies Stack when external SD pulls differ.
-      // Cold units can have a weak pull-down. Hints and retries cannot replace
-      // physical evidence; the LCD ID must still confirm the member.
-      const auto backlight = probe_pin_pulls(ctx, 1ULL << 32, pull_release_us);
-      const auto bias = classify_pin_pull(backlight, 32);
-      return bias == pull_class_t::down || bias == pull_class_t::weak_down;
+      // G32 can be camera output or external SDA on other boards. Its low
+      // level must not admit Stack reset, which can drop their power hold.
+      // Require SD evidence even for hints and the final attempt.
+      return pull_match;
     }
 
     bool confirm(probe_ctx_t& ctx, board_result_t* result) const override
