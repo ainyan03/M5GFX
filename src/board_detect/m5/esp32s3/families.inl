@@ -258,6 +258,7 @@ namespace m5
     pins(wiring::stopwatch::hold),
     internal_i2c(wiring::stopwatch::internal_i2c_sda, wiring::stopwatch::internal_i2c_scl,
                  wiring::stopwatch::internal_i2c_port),
+    // op_gpio_pins also captures the construction-time TE input (GPIO38) for fixed startup rollback.
     no_options(), pins(stopwatch_startup_pins),
   };
   static constexpr board_desc_t desc_papermono = {

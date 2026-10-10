@@ -1080,7 +1080,7 @@ namespace m5gfx
     return finish_detection_setup(result, outcome, transaction, setup_board, setup);
   }
 
-  // Fixed startup honors constructor/adopter failure hooks, but bypasses detector-only test hooks.
+  // Fixed startup honors constructor/adopter hooks and observe_* injections (CORES3_FORCE_VBUS), but bypasses detector-only hooks.
   template <class SetupDetected>
   static board_detect::detect_outcome_t run_fixed_detection(
     const board_detect::m5::board_entry_t& entry, bool allow_reset, SetupDetected setup)
