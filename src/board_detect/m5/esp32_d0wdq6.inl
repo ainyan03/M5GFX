@@ -278,9 +278,12 @@ namespace m5
           ctx.transaction->restore_start(signals);
           return false;
         }
-        if (!finish_unresolved(ctx, &result,
-                               ctx.hint == desc_tough.def.id ? &desc_tough : nullptr,
-                               &desc_core2, false, "Core2/Tough touch unidentified"))
+        if (!select_provisional_member(ctx, &result,
+                               ctx.preferred == desc_tough.def.id ? &desc_tough
+                                 : ctx.preferred == desc_core2.def.id ? &desc_core2 : nullptr,
+                               ctx.hint == desc_tough.def.id ? &desc_tough
+                                 : ctx.hint == desc_core2.def.id ? &desc_core2 : nullptr,
+                               &desc_core2, "Core2/Tough touch unidentified"))
         {
           ctx.transaction->restore_start(signals);
           return false;
@@ -462,6 +465,8 @@ namespace m5
       const auto& values = ctx.detector_workspace.values;
       if (values[2] & 2u)
       {
+        // A bypassed signature can display, but cannot establish a saved identity.
+        result->provisional = true;
         ESP_LOGI("board_detect_m5",
                  "M5Stack detected after bypassing pull signature pd=%08x%08x pu=%08x%08x",
                  static_cast<unsigned>(values[0] >> 32),
