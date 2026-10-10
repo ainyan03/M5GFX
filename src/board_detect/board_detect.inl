@@ -1702,6 +1702,25 @@ namespace board_detect
     bool legacy_zero_preamble;
   };
 
+  bool fixed_start_spi_variant(board_result_t& result, const prepare_ctx_t& ctx,
+                               const spi_id_member_t& member)
+  {
+    if (!prepare(*result.desc, result, ctx)) { return false; }
+    probe_ctx_t probe;
+    static_cast<prepare_ctx_t&>(probe) = ctx;
+    if (!observe_spi_variant(probe, *result.desc, member.probes, member.probe_count,
+                             &result.option, member.three_wire,
+                             member.slow_retry_half_us, member.legacy_zero_preamble))
+    {
+      ESP_LOGW("M5GFX", "Fixed board:%u panel variant unreadable; using default",
+               static_cast<unsigned>(result.def->id));
+    }
+    const auto& display = result.desc->display;
+    const std::int8_t signals[] = { display.dc, display.sclk, display.mosi, display.miso };
+    ctx.transaction->restore_start(signals);
+    return true;
+  }
+
   class spi_id_detector_t final : public board_detector_t
   {
   public:

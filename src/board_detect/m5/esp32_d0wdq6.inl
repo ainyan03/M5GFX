@@ -36,6 +36,7 @@ namespace m5
 
   namespace detail
   {
+    bool fixed_start_core(board_result_t& result, const prepare_ctx_t& ctx);
     bool stack_reset_and_sample_ips(const board_desc_t& desc, const prepare_ctx_t& ctx,
                                     std::uint32_t* detected_option);
   }
@@ -195,13 +196,13 @@ namespace m5
   static const board_entry_t esp32_d0wdq6_boards[] = {
     { &desc_timercam, construct_displayless, "board_M5TimerCam", nullptr },
     { &desc_station, construct_station, nullptr, nullptr },
-    { &desc_core2, construct_core2, nullptr, nullptr },
-    { &desc_tough, construct_tough, nullptr, nullptr },
+    { &desc_core2, construct_core2, nullptr, nullptr, detail::fixed_start_core },
+    { &desc_tough, construct_tough, nullptr, nullptr, detail::fixed_start_core },
     { &desc_stack, construct_stack, nullptr, nullptr },
     { &desc_paper, construct_paper, nullptr, nullptr },
     { &desc_stickcplus, construct_stickcplus, "M5StickCPlus", nullptr },
     { &desc_stickc, construct_stickc, "M5StickC", nullptr },
-    { &desc_coreink, construct_coreink, "M5StackCoreInk", nullptr },
+    { &desc_coreink, construct_coreink, "M5StackCoreInk", nullptr, fixed_start_coreink },
     { &desc_stickcplus2, construct_stickcplus2, "M5StickCPlus2", nullptr },
     { &desc_atompsram, construct_atompsram, "", nullptr },
     { &desc_atomvoice, construct_displayless, "board_M5AtomVoice", nullptr },
@@ -249,6 +250,33 @@ namespace m5
         }
       }
       return true;
+    }
+
+    bool fixed_start_core(board_result_t& result, const prepare_ctx_t& ctx)
+    {
+      const auto& desc = *result.desc;
+      {
+        startup_detail::i2c_scope_t i2c(*ctx.transaction, ctx.i2c_port_probe, desc.internal_i2c);
+        const auto* pmic = i2c.opened ? observe_core_pmic(i2c.port) : nullptr;
+        // Never send a default controller's write list when its identity is unknown.
+        if (pmic == nullptr)
+        {
+          ESP_LOGW("M5GFX", "Fixed board:%u PMIC unreadable; startup stopped",
+                   static_cast<unsigned>(desc.def.id));
+          return false;
+        }
+        result.option |= pmic->detected_option;
+        if (!startup_detail::prepare_power(desc, result, i2c.port, true)) { return false; }
+      }
+      panel_variant_t variant;
+      std::uint32_t keys[4] = {};
+      if (!observe_core_panel(result, ctx, variant, keys)) { return false; }
+      log_panel_variant(variant, keys);
+      if (variant == panel_variant_t::e) { result.option |= generated_options::core2::lcd_e; }
+      const auto& display = desc.display;
+      const std::int8_t signals[] = { display.dc, display.sclk, display.mosi, display.miso };
+      ctx.transaction->restore_start(signals);
+      return prepare(desc, result, ctx);
     }
 
     bool refine_core_family(board_result_t& result, const prepare_ctx_t& ctx)

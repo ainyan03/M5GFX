@@ -206,6 +206,23 @@
       }
     }
 
+    bool fixed_start(board_result_t& result, const prepare_ctx_t& ctx)
+    {
+      probe_ctx_t probe;
+      static_cast<prepare_ctx_t&>(probe) = ctx;
+      result.option |= observe_vbus(probe);
+      const auto& desc = *result.desc;
+      {
+        startup_detail::i2c_scope_t i2c(*ctx.transaction, ctx.i2c_port_probe, desc.internal_i2c);
+        if (!i2c.opened || !startup_detail::prepare_power(desc, result, i2c.port, true))
+        { return false; }
+      }
+      if (result.option & vbus_5v) { enable_bus_out(ctx); }
+      // Identity is fixed: no capacitance, camera or IOE firmware observation.
+      if (!refine_panel(result, ctx)) { return false; }
+      return prepare(desc, result, ctx);
+    }
+
     bool refine(board_result_t& result, const prepare_ctx_t& ctx)
     {
       if (result.option & vbus_5v) { enable_bus_out(ctx); }
