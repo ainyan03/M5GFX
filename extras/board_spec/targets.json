@@ -25,6 +25,7 @@
       "m5stack": {
         "chip": "esp32_d0wdq6", "legacy_board_id": 1, "cpp_namespace": "stack", "board_enum": "board_M5Stack", "desc_name": "desc_stack",
         "wiring_fields": ["display", "shared_sd", "hold"], "reset": "display_rst", "wiring_output": "esp32_d0wdq6_wiring.hpp",
+        "probe_pins": [32],
         "options": [{ "name": "ips", "bit": 0, "select": { "lcd": "ips" } }]
       },
       "m5paper": {

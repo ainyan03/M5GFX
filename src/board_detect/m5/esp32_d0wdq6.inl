@@ -535,8 +535,6 @@ namespace m5
       values[1] = pulls.pullup_high;
       ctx.transaction->restore_start(desc_stack.display.cs);
       const bool pull_match = values[0] == sd_mask && values[1] == sd_mask;
-      const bool bypassed = !pull_match && (ctx.final_attempt || ctx.hint == desc_stack.def.id);
-      values[2] = (pull_match ? 1u : 0u) | (bypassed ? 2u : 0u);
       if (!pull_match)
       {
         ESP_LOGD("board_detect_m5",
@@ -546,7 +544,13 @@ namespace m5
                  static_cast<unsigned>(values[1] >> 32),
                  static_cast<unsigned>(values[1]));
       }
-      return pull_match || bypassed;
+      if (pull_match) { return true; }
+      // Backlight bias also identifies Stack when external SD pulls differ.
+      // Cold units can have a weak pull-down. Hints and retries cannot replace
+      // physical evidence; the LCD ID must still confirm the member.
+      const auto backlight = probe_pin_pulls(ctx, 1ULL << 32, pull_release_us);
+      const auto bias = classify_pin_pull(backlight, 32);
+      return bias == pull_class_t::down || bias == pull_class_t::weak_down;
     }
 
     bool confirm(probe_ctx_t& ctx, board_result_t* result) const override
@@ -576,18 +580,6 @@ namespace m5
       if ((panel_id & detail::panel_id_mask) != detail::common_panel_id)
       { return false; }
       ctx.transaction->restore_start(signals);
-      const auto& values = ctx.detector_workspace.values;
-      if (values[2] & 2u)
-      {
-        // A bypassed signature can display, but cannot establish a saved identity.
-        result->provisional = true;
-        ESP_LOGI("board_detect_m5",
-                 "M5Stack detected after bypassing pull signature pd=%08x%08x pu=%08x%08x",
-                 static_cast<unsigned>(values[0] >> 32),
-                 static_cast<unsigned>(values[0]),
-                 static_cast<unsigned>(values[1] >> 32),
-                 static_cast<unsigned>(values[1]));
-      }
       return true;
     }
 

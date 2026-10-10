@@ -947,7 +947,7 @@ test("M5GFX wiring emitter maps every board-description GPIO", () => {
   }
   const header = renderM5GFXWiringHeader(entries.filter(({ board }) => board.chip === "esp32_d0wdq6"));
   assert.match(header, /constexpr std::int8_t display_sclk = 18;/);
-  assert.match(header, /namespace detection \{\s+constexpr std::int8_t unconditional_pins\[] = \{ 0, 2, 4, 5, 9, 12, 13, 14, 15, 18, 19, 21, 22, 23, 27, 33, 34, 35, 37, 38 \};/);
+  assert.match(header, /namespace detection \{\s+constexpr std::int8_t unconditional_pins\[] = \{ 0, 2, 4, 5, 9, 12, 13, 14, 15, 18, 19, 21, 22, 23, 27, 32, 33, 34, 35, 37, 38 \};/);
   assert.deepEqual(wiringFieldsForRole(board, "bus:main_spi.sclk", parts), ["display_sclk", "shared_sd_sclk"]);
   assert.deepEqual(wiringFieldsForRole(board, "dev:lcd.rst", parts), ["display_rst"]);
   assert.deepEqual(wiringFieldsForRole(catalogBoards.find((item) => item.id === "m5dial"), "dev:touch.int", parts), ["touch_int"]);
