@@ -48,9 +48,10 @@ namespace board_detect
       if (outcome.candidate_kind == candidate_kind_t::provisional
        && outcome.result.candidate == nullptr)
       { outcome.result.candidate = outcome.result.def; }
+      // Later provisional evidence can refine an earlier family representative.
+      // Weak suggestions cannot replace it; weak-only candidates keep the first.
       if (outcome.result.candidate != nullptr
-       && (candidate == nullptr || (kind != candidate_kind_t::provisional
-                                && outcome.candidate_kind == candidate_kind_t::provisional)))
+       && (candidate == nullptr || outcome.candidate_kind == candidate_kind_t::provisional))
       {
         candidate = outcome.result.candidate;
         kind = outcome.candidate_kind;

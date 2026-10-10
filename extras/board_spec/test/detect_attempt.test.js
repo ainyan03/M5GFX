@@ -118,6 +118,21 @@ int main() {
  assert(recovered.attempts==2&&recovered.setup_succeeded&&recovered.result.def==&preferred_desc.def);
  assert(recovered.verdict==verdict_t::confirmed&&recovered.candidate_kind==candidate_kind_t::none);
  assert(construct_count==1&&adopt_count==1&&rollback_count==1&&commit_count==1);
+ // The final refined provisional member replaces the initial retained representative.
+ rollback_count=commit_count=construct_count=adopt_count=reset_count=0;
+ recovery.preferred=3;recovery.hint=2;
+ auto yielded=run_detection_session(recovery,[&](const detect_request_t& r,bool final) {
+  detected={};detected.assign(&desc);detected.status=detect_status_t::matched;
+  power_failed=r.attempt==0;prepare_ok=r.attempt==0||final;
+  detected.provisional=final;refined_member=final?&preferred_desc:nullptr;
+  return run_detection_attempt(list,r,final,[](m5::display_parts_t&,board_t){++adopt_count;return true;});
+ });
+ assert(yielded.attempts==5&&!yielded.setup_succeeded&&yielded.result.candidate==&preferred_desc.def);
+ assert(yielded.candidate_kind==candidate_kind_t::provisional&&yielded.verdict==verdict_t::candidate);
+ M5GFX projected;projected.project(yielded);
+ assert(projected.getBoard()==board_t::board_unknown&&projected.getBoardCandidate()==static_cast<board_t>(2));
+ assert(construct_count==0&&adopt_count==0&&rollback_count==5&&commit_count==0);
+ assert(!should_persist_detection(yielded,0));
  refined_member=nullptr;
  // The protected compatibility wrapper must deliver QFN40 weak candidates.
  detected={};detected.candidate=&desc.def;detected.status=detect_status_t::no_match;

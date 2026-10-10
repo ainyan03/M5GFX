@@ -92,6 +92,37 @@ int main()
   });
   assert(out.attempts == 2 && out.setup_succeeded && out.result.def == &other);
   request.preferred = 0;
+  // Retained candidates follow confidence first, and provisional recency second.
+  for (auto first : {candidate_kind_t::weak, candidate_kind_t::provisional})
+  for (auto next : {candidate_kind_t::weak, candidate_kind_t::provisional}) {
+    out = run_detection_session(request, [&](const detect_request_t& r, bool) {
+      detect_outcome_t result;
+      if (r.attempt < 2) {
+        result.verdict = verdict_t::candidate;
+        result.result.candidate = r.attempt == 0 ? &member : &other;
+        result.candidate_kind = r.attempt == 0 ? first : next;
+      }
+      return result;
+    });
+    assert(out.attempts == 5 && out.verdict == verdict_t::candidate);
+    assert(out.result.candidate == (next == candidate_kind_t::provisional ? &other : &member));
+    assert(out.candidate_kind == (next == candidate_kind_t::provisional ? next : first));
+  }
+  // Initial power failure retains Core2; final refinement selects Tough while yielding to Paper.
+  request.hint = other.id; request.preferred = weak.id;
+  out = run_detection_session(request, [&](const detect_request_t& r, bool final) {
+    detect_outcome_t result;
+    if (r.attempt == 0 || final) {
+      result.result.def = final ? &other : &member;
+      result.result.provisional = true;
+      assert(!finalize_prepared_result(result, r.preferred));
+    }
+    return result;
+  });
+  assert(out.attempts == 5 && !out.setup_succeeded && out.result.candidate == &other);
+  assert(out.verdict == verdict_t::candidate && out.candidate_kind == candidate_kind_t::provisional);
+  assert(!should_persist_detection(out, 0));
+  request.preferred = 0;
   // Reset escalation and immutable hint remain true through the final retry.
   out = run_detection_session(request, [&](const detect_request_t& r, bool final) {
     assert(r.hint == other.id); assert(final == (r.attempt == 4)); assert(r.allow_reset == (r.attempt >= 3));
