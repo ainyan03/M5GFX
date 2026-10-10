@@ -400,25 +400,36 @@ namespace m5
       prepare_ctx.i2c_port_probe = i2c.port;
       const auto* pmic = detail::observe_core_pmic(i2c.port);
       if (pmic == nullptr) { return false; }
+      ctx.family_identified = true;
       ESP_LOGD("board_detect_m5", "power controller id=%02x", pmic->id_value);
 
       const bool new_pmic = pmic->id_value != detail::station_pmic_id;
-      bool core2_touch = probe_i2c_ack(ctx, desc_core2.internal_i2c.sda,
-                                      desc_core2.internal_i2c.scl, detail::core2_touch_address);
-      bool tough_touch = probe_i2c_ack(ctx, desc_core2.internal_i2c.sda,
-                                      desc_core2.internal_i2c.scl, detail::tough_touch_address);
+      // Keep the scoped port alive; probe_i2c_ack would release it between reads.
+      const auto touch_answers = [&](std::uint8_t addr) -> bool
+      {
+        const bool began = lgfx::i2c::beginTransaction(i2c.port, addr, 100000, false).has_value();
+        const bool ended = lgfx::i2c::endTransaction(i2c.port).has_value();
+        return began && ended;
+      };
+      bool core2_touch = touch_answers(detail::core2_touch_address);
+      bool tough_touch = touch_answers(detail::tough_touch_address);
 #if defined (M5GFX_AUTODETECT_TEST_FAIL_CORE2_TOUCH) || defined (M5GFX_AUTODETECT_TEST_FAIL_CORE2_TOUCH_PRE) || defined (M5GFX_AUTODETECT_TEST_CORE_FAMILY_FORCE_STATION)
       core2_touch = tough_touch = false;
 #endif
-      const auto pulls = probe_pin_pulls(ctx, (1ULL << 12) | (1ULL << 32) | (1ULL << 33));
-      const auto classify = [&](unsigned pin) -> char
+      char g12 = '-', g32 = '-', g33 = '-';
+      // Port A is external. Sample its pulls only for silent AXP192 members;
+      // positive touch evidence and AXP2101 do not need this subdivision.
+      if (!core2_touch && !tough_touch && !new_pmic)
       {
-        const unsigned sample = ((pulls.pulldown_high >> pin) & 1)
-                              | (((pulls.pullup_high >> pin) & 1) << 1);
-        return "DXFU"[sample];
-      };
-      char g12 = classify(12);
-      const char g32 = classify(32), g33 = classify(33);
+        const auto pulls = probe_pin_pulls(ctx, (1ULL << 12) | (1ULL << 32) | (1ULL << 33));
+        const auto classify = [&](unsigned pin) -> char
+        {
+          const unsigned sample = ((pulls.pulldown_high >> pin) & 1)
+                                | (((pulls.pullup_high >> pin) & 1) << 1);
+          return "DXFU"[sample];
+        };
+        g12 = classify(12); g32 = classify(32); g33 = classify(33);
+      }
 #if defined (M5GFX_AUTODETECT_TEST_CORE_FAMILY_FORCE_STATION)
       g12 = 'F';
 #endif
@@ -460,6 +471,8 @@ namespace m5
 
       std::uint64_t sd_mask;
       if (!detail::sd_pull_mask(desc_core2, &sd_mask)) { return false; }
+      // A cold AXP192 Core2/Tough with either Port A line externally held low
+      // also enters this Station path and stays unidentified after an LCD miss.
       // Only the Station probe needs the exceptional pre-power SD transition.
       startup_detail::pin_level(desc_core2.display.cs, true);
       const auto sd_pulls = probe_pin_pulls(ctx, sd_mask);
