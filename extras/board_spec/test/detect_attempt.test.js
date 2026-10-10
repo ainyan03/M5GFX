@@ -148,10 +148,10 @@ struct M5GFX {detect_config_t _detect_config;bool _detect_started=false;board_t 
 };
 int main(){M5GFX gfx;detect_config_t cfg;assert(gfx.getDetectConfig().fallback_board==board_t::board_unknown);
  cfg.fallback_board=board_t::member;gfx.setDetectConfig(cfg);assert(warnings==0);
- gfx._detect_started=true;gfx.setDetectConfig(cfg);assert(warnings==2);assert(gfx.adopted==board_t::board_unknown);
+ gfx._detect_started=true;gfx.setDetectConfig(cfg);assert(warnings==0);assert(gfx.adopted==board_t::board_unknown);
  gfx.adopted=board_t::member;cfg.fallback_board=board_t::other;gfx.setDetectConfig(cfg);
- assert(warnings==2);assert(gfx.adopted==board_t::member);assert(gfx.getDetectConfig().fallback_board==board_t::other);
- cfg.fallback_board=board_t::board_unknown;gfx.setDetectConfig(cfg);assert(gfx.getDetectConfig().fallback_board==board_t::board_unknown);
+ assert(warnings==1);assert(gfx.adopted==board_t::member);assert(gfx.getDetectConfig().fallback_board==board_t::other);
+ cfg.fallback_board=board_t::board_unknown;gfx.setDetectConfig(cfg);assert(gfx.getDetectConfig().fallback_board==board_t::board_unknown);assert(warnings==2);
 }
 `,"public config");
 });

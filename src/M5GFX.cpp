@@ -1062,10 +1062,13 @@ namespace m5gfx
 
   void M5GFX::setDetectConfig(const detect_config_t& config)
   {
+    const bool changed = _detect_config.fallback_board != config.fallback_board;
     _detect_config = config;
 #if defined (ESP_PLATFORM)
-    if (_detect_started)
+    if (_detect_started && changed)
     { ESP_LOGW(LIBRARY_NAME, "[Autodetect] configuration stored after init; applies to the next detection"); }
+#else
+    (void)changed;
 #endif
   }
 
