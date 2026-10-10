@@ -8,7 +8,32 @@ namespace m5gfx { namespace board_detect {
   {
     std::uint64_t pulldown_high = 0;
     std::uint64_t pullup_high = 0;
+    std::uint64_t pulldown_release_high = 0;
+    std::uint64_t pullup_release_high = 0;
   };
+
+  enum class pull_class_t : std::uint8_t
+  {
+    up, down, weak_up, weak_down, floating, conflict,
+  };
+
+  // Requires a pin in 0..63 measured with release_us > 0. Without release
+  // samples, internally pull-dependent pins cannot be distinguished from floating.
+  inline pull_class_t classify_pin_pull(const pin_pull_result_t& measured, int pin)
+  {
+    const auto bit = std::uint64_t(1) << pin;
+    const bool pd = measured.pulldown_high & bit;
+    const bool pu = measured.pullup_high & bit;
+    if (pd && pu) { return pull_class_t::up; }
+    if (!pd && !pu) { return pull_class_t::down; }
+    if (pd && !pu) { return pull_class_t::conflict; }
+    const bool pd_release = measured.pulldown_release_high & bit;
+    const bool pu_release = measured.pullup_release_high & bit;
+    if (!pd_release && pu_release) { return pull_class_t::floating; }
+    if (!pd_release && !pu_release) { return pull_class_t::weak_down; }
+    if (pd_release && pu_release) { return pull_class_t::weak_up; }
+    return pull_class_t::conflict;
+  }
 
   struct detect_class_expected_t
   {
