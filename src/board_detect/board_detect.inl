@@ -1882,6 +1882,14 @@ namespace board_detect
     {
       current = result.desc;
     }
+    if (!(result.prepared & prepared_observation) && result.observe_after_power != nullptr)
+    {
+      // Panel metadata is optional after retained power failure; the member
+      // was already confirmed before this observer was attached.
+      if (!(result.prepared & prepared_power_failed)
+       && !result.observe_after_power(result, ctx)) { return false; }
+      result.prepared |= prepared_observation;
+    }
     if (!startup_detail::prepare_sd_spi(*current, result, ctx)) { return false; }
     const bool reset_was_prepared = result.prepared & prepared_reset;
     if (!reset_was_prepared)

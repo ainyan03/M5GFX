@@ -330,7 +330,7 @@ test("production prepare retries failed power before pending member refinement",
  struct {int hw_port,sda,scl;} internal_i2c;struct {reset_kind_t kind;} reset;};`)
  .replace('bool final_attempt=false;','bool final_attempt=false; int* transaction=nullptr; int i2c_port_probe=0;');
  await compileRun(extended+`
-int power_calls,refine_calls,sd_calls,construct_calls;bool fail_power;
+int power_calls,refine_calls,sd_calls,construct_calls,observe_calls;bool fail_power;
 namespace lgfx {namespace i2c {struct value_t {bool has_value() const{return true;}int value() const{return 0;}};
  bool isInitialized(int){return false;}value_t getPinSDA(int){return {};}
  value_t getPinSCL(int){return {};}value_t init(int,int,int){return {};}}}
@@ -344,17 +344,19 @@ namespace startup_detail {
 }
 bool prepare_reset(const board_desc_t&,board_result_t&,const prepare_ctx_t&,int,void*,bool){return true;}
 bool refine_member(board_result_t&,const prepare_ctx_t&){++refine_calls;return true;}
+bool observe_member(board_result_t&,const prepare_ctx_t&){++observe_calls;return true;}
 bool prepare_member(const board_desc_t& desc,board_result_t& result,const prepare_ctx_t& ctx) ${prepare}
 int main(){int tx=0,variant=0;
  // Pending refine represents both D/D and U/U; no refine represents touch-confirmed members.
- for(int row:{0,1,2})for(bool final:{false,true})for(bool failed:{false,true})for(bool scoped:{false,true}){
+ for(int row:{0,1,2})for(bool final:{false,true})for(bool failed:{false,true})for(bool scoped:{false,true})for(bool observation:{false,true}){
  board_desc_t desc={{21,"PaperMono",0},{scoped?&variant:nullptr},{-1,47,48},{reset_kind_t::none}};
- board_result_t r;r.assign(&desc);r.refine=row<2?refine_member:nullptr;
+ board_result_t r;r.assign(&desc);r.refine=row<2?refine_member:nullptr;r.observe_after_power=(row==2&&observation)?observe_member:nullptr;
  prepare_ctx_t ctx;ctx.transaction=&tx;ctx.final_attempt=final;
- power_calls=refine_calls=sd_calls=construct_calls=0;fail_power=failed;
+ power_calls=refine_calls=sd_calls=construct_calls=observe_calls=0;fail_power=failed;
  const bool ok=prepare_member(desc,r,ctx);if(ok)++construct_calls;
  const bool retry=failed&&row<2&&!final;
- assert(ok==!retry&&construct_calls==int(!retry));assert(power_calls==1);
+ assert(ok==!retry&&construct_calls==int(!retry));assert(power_calls==1);assert(observe_calls==int(row==2&&observation&&!failed));
+ assert(bool(r.prepared&prepared_observation)==(row==2&&observation));
  assert(refine_calls==int(row<2&&!failed));assert(sd_calls==int(!retry));
  assert(r.provisional==(failed&&row<2&&final));
  assert(bool(r.prepared&prepared_refine)==(row<2&&!retry));
@@ -366,4 +368,126 @@ int main(){int tx=0,variant=0;
  prepare_ctx_t ctx;ctx.transaction=&tx;assert(prepare_member(desc,r,ctx));assert(!r.provisional);
 }
 `,"pending-refinement power failure");
+});
+
+test("production AXP subdivision excludes unsafe Station fallbacks before power", async () => {
+ const source=await fs.readFile(path.join(src,"m5/esp32_d0wdq6.inl"),"utf8");
+ const confirm=body(source.slice(source.indexOf('class axp_family_detector_t')),'bool confirm(');
+ const detector=await fs.readFile(path.join(src,"board_detect.inl"),"utf8");
+ const helper=body(detector,'static bool select_provisional_member');
+ const prepare=body(detector,'bool prepare(const board_desc_t& desc,');
+ const extended=common.replace('#define ESP_LOGW', '#define ESP_LOGE(...) ((void)0)\n#define ESP_LOGW').replace('struct board_desc_t {board_def_t def;};',`enum class reset_kind_t {none,i2c_regs}; struct board_desc_t {board_def_t def;struct {const int* variants;} power;
+ struct {int hw_port,sda,scl;} internal_i2c;struct {std::int8_t dc,cs,sclk,mosi,miso;} display;
+ struct {int sd_cs;} sd;struct {int pin;reset_kind_t kind;} reset;};`)
+ .replace('struct prepare_ctx_t {', 'struct tx_t {template<class T>void restore_start(T){}};\nstruct prepare_ctx_t {tx_t* transaction=nullptr; int i2c_port_probe=0; ');
+ await compileRun(extended+`
+const board_desc_t desc_station={{22,"Station",0}};
+namespace generated_options {namespace core2 {constexpr unsigned new_pmic=1;}}
+struct pmic_variant_t {unsigned id_value,detected_option;};
+namespace lgfx {namespace i2c {struct value_t {bool has_value() const{return true;}int value() const{return 0;}};
+ bool isInitialized(int){return false;}value_t getPinSDA(int){return {};}
+ value_t getPinSCL(int){return {};}value_t init(int,int,int){return {};}}}
+int pmic_id,core_ack,tough_ack,g12,g32,g33,ack_reads,station_probes,sd_calls,core_power;
+bool panel_ok,pmic_ok=true,reset_ok=true;
+namespace startup_detail {
+ bool description_valid(const board_desc_t&){return true;}bool gpio_valid(int){return true;}
+ struct i2c_scope_t {bool opened=true;int port=0;i2c_scope_t(tx_t&,int,decltype(board_desc_t::internal_i2c)) {}};
+ void pin_level(int,bool){}
+ void hold_chip_selects(const board_desc_t&){}
+ bool prepare_power(const board_desc_t& d,board_result_t& r,int,bool){if(d.def.id==1||d.def.id==2)++core_power;r.prepared|=prepared_power;return true;}
+ bool prepare_sd_spi(const board_desc_t&,board_result_t& r,const prepare_ctx_t&){++sd_calls;r.prepared|=prepared_sd_spi;return true;}
+}
+namespace detail {constexpr int station_pmic_id=3,core2_touch_address=0x38,tough_touch_address=0x2e;
+ constexpr unsigned station_id_mask=0xfb,station_id=0x81,panel_id_command=4;
+ pmic_variant_t pmic;
+ const pmic_variant_t* observe_core_pmic(int){pmic={unsigned(pmic_id),pmic_id==0x4a?1u:0u};return pmic_ok?&pmic:nullptr;}
+ bool sd_pull_mask(const board_desc_t&,std::uint64_t* mask){*mask=7;return true;}
+ bool refine_core_family(board_result_t&,const prepare_ctx_t&){return true;}
+ bool observe_confirmed_core_panel(board_result_t&,const prepare_ctx_t&){return true;}}
+struct pulls_t {std::uint64_t pulldown_high,pullup_high;};
+pulls_t probe_pin_pulls(probe_ctx_t&,std::uint64_t mask){if(mask==7)return {7,7};
+ return {std::uint64_t(g12&1)<<12|std::uint64_t(g32&1)<<32|std::uint64_t(g33&1)<<33,
+ std::uint64_t((g12>>1)&1)<<12|std::uint64_t((g32>>1)&1)<<32|std::uint64_t((g33>>1)&1)<<33};}
+bool probe_i2c_ack(probe_ctx_t&,int,int,int addr){++ack_reads;assert(addr==0x38||addr==0x2e);return addr==0x38?core_ack:tough_ack;}
+bool prepare_reset(const board_desc_t&,board_result_t&,const prepare_ctx_t&,int){return reset_ok;}
+bool prepare_reset(const board_desc_t&,board_result_t&,const prepare_ctx_t&,int,void*,bool){return reset_ok;}
+unsigned soft_spi_read32(probe_ctx_t&,int,int,int,int,int,int,int){++station_probes;return panel_ok?0x81:0;}
+bool select_provisional_member(const prepare_ctx_t& ctx,board_result_t* result,const board_desc_t* preferred_if_possible,const board_desc_t* hinted_if_possible,const board_desc_t* family_default,const char* why) ${helper}
+bool confirm_member(probe_ctx_t& ctx,board_result_t* result) ${confirm}
+bool prepare_member(const board_desc_t& desc,board_result_t& result,const prepare_ctx_t& ctx) ${prepare}
+int main(){tx_t tx;
+ for(int pmic_value:{3,0x4a})for(core_ack=0;core_ack<=1;++core_ack)for(tough_ack=0;tough_ack<=1;++tough_ack)
+ for(g12=0;g12<4;++g12)for(g32=0;g32<4;++g32)for(g33=0;g33<4;++g33)
+ for(bool final:{false,true})for(bool panel:{false,true})
+ for(board_id_t preference:{board_id_t(0),board_id_t(1),board_id_t(2),board_id_t(22),board_id_t(42)})
+ for(board_id_t hint:{board_id_t(0),board_id_t(1),board_id_t(2),board_id_t(22),board_id_t(42)}){
+ probe_ctx_t ctx;ctx.transaction=&tx;ctx.final_attempt=final;ctx.attempt=final?4:0;ctx.preferred=preference;ctx.hint=hint;
+ pmic_id=pmic_value;panel_ok=panel;ack_reads=station_probes=sd_calls=core_power=0;board_result_t r;
+ bool ok=confirm_member(ctx,&r);int expected=0;bool provisional=false,refine=false,observe=false,station=false;
+ if(!(core_ack&&tough_ack)&&!(pmic_id==0x4a&&tough_ack)){
+ if(core_ack||tough_ack){expected=core_ack?1:2;observe=true;}
+ else if(pmic_id==0x4a){if(final){expected=1;provisional=true;observe=true;}}
+ else if(g12==0&&g32==3&&g33==3){expected=1;refine=true;}
+ else if(g12==2||g12==0){station=true;if(panel)expected=22;}}
+ assert(ack_reads==2&&ok==(expected!=0));assert(station_probes==int(station)&&sd_calls==int(station));
+ if(ok){assert(r.def->id==expected&&r.provisional==provisional);
+ assert(bool(r.refine)==refine&&bool(r.observe_after_power)==observe);
+ assert(r.option==(pmic_id==0x4a?1u:0u));assert(prepare_member(*r.desc,r,ctx));}
+ assert(core_power==int(ok&&(expected==1||expected==2)));
+ if(station||(!core_ack&&!tough_ack&&pmic_id==3&&g12!=0&&g12!=2))assert(core_power==0);
+ }
+ probe_ctx_t ctx;ctx.transaction=&tx;board_result_t r;pmic_ok=false;assert(!confirm_member(ctx,&r));
+}
+`,"AXP pre-power table");
+});
+
+test("production AXP refinement reads both touches after SD preparation and panel-only observation preserves identity", async () => {
+ const source=await fs.readFile(path.join(src,"m5/esp32_d0wdq6.inl"),"utf8");
+ const detector=await fs.readFile(path.join(src,"board_detect.inl"),"utf8");
+ const panel=body(source,'bool observe_core_panel('),observer=body(source,'bool observe_confirmed_core_panel('),refine=body(source,'bool refine_core_family(');
+ const helper=body(detector,'static bool select_provisional_member');
+ const extended=common.replace('struct board_desc_t {board_def_t def;};',`struct board_desc_t {board_def_t def;
+ struct {int sda,scl;} internal_i2c;struct {std::int8_t dc,cs,sclk,mosi,miso;} display;struct {int sd_cs;} sd;};`)
+ .replace('struct prepare_ctx_t {','struct tx_t {template<class T>void restore_start(T){}};\nstruct prepare_ctx_t {tx_t* transaction=nullptr; int i2c_port_probe=0; bool allow_reset=false; ');
+ await compileRun(extended+`
+namespace generated_options {namespace core2 {constexpr unsigned new_pmic=1,lcd_e=2;}}
+enum class panel_variant_t {unknown,e};
+unsigned clock_ms;int sd_calls,panel_calls,tough_reads,core_reads;bool tough_ack,core_ack;
+namespace lgfx {unsigned millis(){return clock_ms;}void delay(unsigned ms){clock_ms+=ms;}
+namespace i2c {struct response {bool ok;bool has_value(){return ok;}};
+ response readRegister8(int,int addr,int,int){if(addr==0x2e){++tough_reads;return {tough_ack};}assert(addr==0x38);++core_reads;return {core_ack};}}}
+namespace startup_detail {void pin_level(int,bool){}
+ struct i2c_scope_t {bool opened=true;int port=0;i2c_scope_t(tx_t&,int,decltype(board_desc_t::internal_i2c)) {}};
+ bool prepare_sd_spi(const board_desc_t&,board_result_t& r,const prepare_ctx_t&){if(!(r.prepared&prepared_sd_spi)){++sd_calls;r.prepared|=prepared_sd_spi;}return true;}}
+struct soft_spi_t {soft_spi_t(int,int,int,int){}void init(){assert(sd_calls==1);}};
+panel_variant_t identify_panel_variant(soft_spi_t&,int,std::uint32_t*,int,bool=true){assert(sd_calls==1);++panel_calls;return panel_variant_t::e;}
+bool prepare_reset(const board_desc_t&,board_result_t&,const prepare_ctx_t&,int){return true;}
+void log_panel_variant(panel_variant_t,const std::uint32_t*){}
+constexpr int tough_touch_address=0x2e,core2_touch_address=0x38,touch_probe_register=0,tough_touch_i2c_frequency=400000,touch_startup_poll_ms=300;
+bool select_provisional_member(const prepare_ctx_t& ctx,board_result_t* result,const board_desc_t* preferred_if_possible,const board_desc_t* hinted_if_possible,const board_desc_t* family_default,const char* why) ${helper}
+bool observe_core_panel(board_result_t& result,const prepare_ctx_t& ctx,panel_variant_t& variant,std::uint32_t keys[4]) ${panel}
+bool observe_panel(board_result_t& result,const prepare_ctx_t& ctx) ${observer}
+bool refine_member(board_result_t& result,const prepare_ctx_t& ctx) ${refine}
+int main(){tx_t tx;
+ for(bool new_pmic:{false,true})for(bool core:{false,true})for(bool tough:{false,true})for(bool final:{false,true})
+ for(board_id_t preference:{board_id_t(0),board_id_t(1),board_id_t(2),board_id_t(22),board_id_t(42)})
+ for(board_id_t hint:{board_id_t(0),board_id_t(1),board_id_t(2),board_id_t(22),board_id_t(42)}){
+ prepare_ctx_t ctx;ctx.transaction=&tx;ctx.final_attempt=final;ctx.preferred=preference;ctx.hint=hint;
+ board_result_t r;r.assign(&desc_core2);r.option=new_pmic?1:0;sd_calls=panel_calls=tough_reads=core_reads=0;clock_ms=0;tough_ack=tough;core_ack=core;
+ bool ok=refine_member(r,ctx);assert(tough_reads==core_reads&&tough_reads>0);assert(sd_calls==1&&panel_calls==1);
+ const bool contradiction=(core&&tough)||(new_pmic&&tough);
+ assert(ok==(!contradiction&&(core||tough||final)));
+ if(ok){const auto possible=[&](board_id_t id){return id==1||(id==2&&!new_pmic);};
+ const auto expected=core?1:tough?2:possible(preference)?preference:possible(hint)?hint:1;
+ assert(r.def->id==expected&&r.provisional==(!core&&!tough));assert(r.option==(unsigned(expected==2?0:new_pmic)|2));}
+ }
+ for(const auto* confirmed:{&desc_core2,&desc_tough}){
+ board_result_t r;r.assign(confirmed);prepare_ctx_t ctx;ctx.transaction=&tx;
+ sd_calls=panel_calls=tough_reads=core_reads=0;tough_ack=core_ack=true;
+ assert(observe_panel(r,ctx));assert(r.def==&confirmed->def&&r.option==2&&!r.provisional);
+ assert(sd_calls==1&&panel_calls==1&&tough_reads==0&&core_reads==0);
+ assert(observe_panel(r,ctx));assert(sd_calls==1);
+ }
+}
+`,"AXP post-power refinement and observation");
 });
