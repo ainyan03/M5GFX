@@ -1867,12 +1867,14 @@ namespace board_detect
       if (current->reset.kind == reset_kind_t::i2c_regs)
       {
         startup_detail::i2c_scope_t i2c(*ctx.transaction, ctx.i2c_port_probe, current->internal_i2c);
-        if (!i2c.opened || !prepare_reset(*current, result, ctx, i2c.port, nullptr, true))
+        if (!i2c.opened || !prepare_reset(*current, result, ctx, i2c.port,
+                                          ctx.collect_reset_option ? &result.option : nullptr, true))
         {
           return false;
         }
       }
-      else if (!prepare_reset(*current, result, ctx, ctx.i2c_port_probe, nullptr, true))
+      else if (!prepare_reset(*current, result, ctx, ctx.i2c_port_probe,
+                               ctx.collect_reset_option ? &result.option : nullptr, true))
       {
         return false;
       }
