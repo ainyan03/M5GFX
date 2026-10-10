@@ -240,6 +240,11 @@ namespace m5
                           reg_bit(0, 0), reg_bit(0, 0), ops::no_ops(), ops::no_ops(),
                           { nullptr, 0 }, 0),
   };
+  // Construction configures the panel TE input before display adoption.
+  static constexpr std::int8_t stopwatch_te_pin = GPIO_NUM_38;
+  static const std::int8_t stopwatch_startup_pins[] = {
+    wiring::stopwatch::display_cs, stopwatch_te_pin,
+  };
   static constexpr board_desc_t desc_stopwatch = {
     { id(lgfx::board_M5StopWatch), "M5StopWatch", 0 },
     i2c_power_confirmed(specs::stopwatch::pmic::i2c_freq, stopwatch_pmic_variants,
@@ -253,7 +258,7 @@ namespace m5
     pins(wiring::stopwatch::hold),
     internal_i2c(wiring::stopwatch::internal_i2c_sda, wiring::stopwatch::internal_i2c_scl,
                  wiring::stopwatch::internal_i2c_port),
-    no_options(), pins(wiring::stopwatch::hold),
+    no_options(), pins(stopwatch_startup_pins),
   };
   static constexpr board_desc_t desc_papermono = {
     { id(lgfx::board_M5PaperMono), "M5PaperMono", 0 },
