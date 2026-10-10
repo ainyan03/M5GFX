@@ -1168,7 +1168,7 @@ namespace m5gfx
             return !reject_detected_setup(setup_board)
                 && _adopt_detected_parts(parts.bus, parts.panel, parts.light, parts.touch);
           });
-        if (!package.direct_setup || result.verdict != board_detect::verdict_t::confirmed)
+        if (!package.direct_setup || !result.setup_succeeded)
         {
           if (package.direct_setup) { panel(nullptr); }
           panel(_panel_last.get());

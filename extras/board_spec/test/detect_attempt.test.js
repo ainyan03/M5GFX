@@ -139,3 +139,28 @@ int main(){M5GFX gfx;detect_config_t cfg;assert(gfx.getDetectConfig().fallback_b
 }
 `,"public config");
 });
+
+test("production init restores panel according to adoption independently of verdict", async () => {
+  const main = await fs.readFile(path.join(src, "M5GFX.cpp"), "utf8");
+  const start = main.indexOf("        if (!package.direct_setup ||");
+  assert.ok(start >= 0);
+  const restore = main.slice(start, main.indexOf("        return result;", start));
+  await compileRun([
+    '#include "board_detect/detect_types.hpp"',
+    '#include <cassert>',
+    'using namespace m5gfx;',
+    'int calls, clears;',
+    'void panel(int* p) {++calls; if (!p) ++clears;}',
+    'struct holder_t {int value; int* get() {return &value;}} _panel_last;',
+    'void restore(bool direct, const board_detect::detect_outcome_t& result) {',
+    'struct {bool direct_setup;} package={direct};',
+    restore,
+    '}',
+    'int main() {for(int verdict=0;verdict<3;++verdict) for(int adopted=0;adopted<2;++adopted) for(int direct=0;direct<2;++direct) {',
+    'calls=clears=0;board_detect::detect_outcome_t result;',
+    'result.verdict=static_cast<board_detect::verdict_t>(verdict);result.setup_succeeded=adopted;',
+    'restore(direct,result);',
+    'assert(calls==(!direct?1:adopted?0:2));assert(clears==(direct&&!adopted));',
+    '}}',
+  ].join("\n"), "panel restoration");
+});
