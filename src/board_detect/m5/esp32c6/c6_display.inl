@@ -83,7 +83,7 @@ public:
         // only on the last retry, without caching the unverified fallback.
         if (!ctx.final_attempt || ctx.hint != desc_unitc6l.def.id) { return false; }
         result->assign(&desc_unitc6l);
-        result->transient_fallback = true;
+        result->provisional = true;
         ESP_LOGW("board_detect_m5", "UnitC6L PI4IO unanswered; using hinted board for this boot");
         return true;
       }

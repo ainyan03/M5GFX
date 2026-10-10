@@ -508,7 +508,7 @@ namespace m5
         result.assign(&desc_stopwatch);
       }
       if (stopwatch_touch) { return true; }
-      result.transient_fallback = true;
+      result.provisional = true;
       ESP_LOGW("board_detect_m5", "StopWatch/PaperMono touch unanswered; using %s for this boot",
                result.def->name);
       return true;
@@ -775,7 +775,7 @@ namespace m5
         else if (ctx.hint == desc_cardputer_adv.def.id
               && (pulls.pulldown_high & adv_mask) == adv_mask)
         { chosen = &desc_cardputer_adv; }
-        result->transient_fallback = true;
+        result->provisional = true;
         ESP_LOGW("board_detect_m5", "Cardputer variant unanswered; using %s for this boot",
                  chosen->def.name);
       }
