@@ -234,7 +234,7 @@ int main() {
 
 test("production PM1 unresolved tail keeps PaperMono without running hinted StopWatch power", async () => {
  const source=await fs.readFile(path.join(src,"m5/esp32s3/families.inl"),"utf8");
- const begin=source.indexOf('      if (!stopwatch_touch && !ctx.final_attempt)');
+ const begin=source.indexOf('      if (!ctx.final_attempt)');
  const end=source.indexOf('\n    }',begin);
  const tail=source.slice(begin,end);
  await compileRun(common+`
@@ -252,4 +252,71 @@ int main(){for(board_id_t hint:{board_id_t(0),board_id_t(20),board_id_t(21)}) fo
  detect_outcome_t out;out.result=r;assert(finalize_prepared_result(out,preferred)==(preferred!=20));
 }}
 `,"PM1 fixed representative");
+});
+
+test("production PM1 pre-power table gates writes and fixes observed members", async () => {
+ const source=await fs.readFile(path.join(src,"m5/esp32s3/families.inl"),"utf8");
+ const detector=await fs.readFile(path.join(src,"board_detect.inl"),"utf8");
+ const confirm=body(source.slice(source.indexOf('class pm1_family_detector_t')),'bool confirm(');
+ const helper=body(detector,'static bool select_provisional_member');
+ await compileRun(common+`
+const board_desc_t desc_stopwatch={{20,"StopWatch",0}},desc_papermono={{21,"PaperMono",0}};
+namespace wiring {namespace stopwatch {constexpr int internal_i2c_sda=1,internal_i2c_scl=2;}
+namespace papermono {constexpr int internal_i2c_sda=1,internal_i2c_scl=2;}}
+namespace detail {constexpr int stopwatch_probe_addr=0x15,papermono_probe_addr=0x38;
+bool refine_papermono_touch(board_result_t&,const prepare_ctx_t&){return true;}}
+struct pulls_t {std::uint64_t pulldown_high,pullup_high;};
+int sw,pm,g12,g13,reads;bool ready=true;
+pulls_t probe_pin_pulls(probe_ctx_t&,std::uint64_t){return {std::uint64_t(g12&1)<<12|std::uint64_t(g13&1)<<13,std::uint64_t((g12>>1)&1)<<12|std::uint64_t((g13>>1)&1)<<13};}
+bool probe_i2c_ack(probe_ctx_t&,int,int,int addr){++reads;assert(addr==0x15||addr==0x38);return addr==0x15?sw:pm;}
+bool probe_i2c_read(probe_ctx_t&,int,int,int addr,int,std::uint8_t* data,int,int,int){data[0]=0x50;data[1]=0x20;return addr==0x6e||ready;}
+bool select_provisional_member(const prepare_ctx_t& ctx,board_result_t* result,const board_desc_t* preferred_if_possible,const board_desc_t* hinted_if_possible,const board_desc_t* family_default,const char* why) ${helper}
+bool confirm_member(probe_ctx_t& ctx,board_result_t* result) ${confirm}
+int main(){
+ for(sw=0;sw<=1;++sw)for(pm=0;pm<=1;++pm)for(g12=0;g12<4;++g12)for(g13=0;g13<4;++g13)
+ for(bool final:{false,true})for(board_id_t preferred:{board_id_t(0),board_id_t(20),board_id_t(21),board_id_t(42)})
+ for(board_id_t hint:{board_id_t(0),board_id_t(20),board_id_t(21)}){
+ probe_ctx_t ctx;ctx.final_attempt=final;ctx.attempt=final?4:0;ctx.preferred=preferred;ctx.hint=hint;
+ board_result_t r;reads=0;bool ok=confirm_member(ctx,&r);assert(reads==2);
+ int expected=0;bool provisional=false,refine=false;
+ if(sw!=pm)expected=sw?20:21;
+ else if(!sw&&g12==0&&g13==0){expected=21;refine=true;}
+ else if(final){provisional=true;
+ if(!sw&&(g12==2||(g12==0&&g13==3)))expected=20;
+ else if(!sw&&g12==3)expected=21;
+ else expected=(preferred==20||preferred==21)?preferred:(hint==20||hint==21)?hint:0;}
+ assert(ok==(expected!=0));int stopwatch_power=0,papermono_power=0;
+ if(ok){assert(r.def->id==expected&&r.provisional==provisional);
+ assert(bool(r.refine)==refine);if(expected==20)++stopwatch_power;else ++papermono_power;
+ detect_outcome_t out;out.result=r;if(provisional)assert(!should_persist_detection(out,0));}
+ assert(stopwatch_power==(ok&&expected==20));assert(papermono_power==(ok&&expected==21));
+ }
+ ready=false;probe_ctx_t ctx;ctx.final_attempt=true;sw=1;pm=0;board_result_t r;assert(!confirm_member(ctx,&r));
+}
+`,"PM1 pre-power table");
+});
+
+test("production PM1 D/D refinement polls only PaperMono and never switches power", async () => {
+ const source=await fs.readFile(path.join(src,"m5/esp32s3/families.inl"),"utf8");
+ const refine=body(source,'bool refine_papermono_touch');
+ await compileRun(common.replace('bool final_attempt=false;','bool final_attempt=false; int* transaction=nullptr; int i2c_port_probe=0;')+`
+const board_desc_t desc_papermono={{21,"PaperMono",0}};
+namespace specs {namespace papermono {namespace touch {constexpr int i2c_freq=100000;}}}
+constexpr int papermono_probe_addr=0x38;
+bool ack,opened;unsigned clock_ms,probes;
+namespace lgfx {unsigned millis(){return clock_ms;}void delay(unsigned ms){clock_ms+=ms;}
+namespace i2c {struct response {bool ok;bool has_value(){return ok;}};
+response beginTransaction(int,int addr,int,bool){assert(addr==0x38);++probes;return {ack};}
+response endTransaction(int){return {true};}}}
+namespace startup_detail {struct i2c_scope_t {bool opened;int port=0;
+i2c_scope_t(int&,int,const board_desc_t&):opened(::opened){}};}
+bool refine_member(board_result_t& result,const prepare_ctx_t& ctx) ${refine.replace('desc_papermono.internal_i2c','desc_papermono')}
+int main(){int tx=0;for(bool final:{false,true})for(bool response:{false,true})for(bool bus:{false,true}){
+ ack=response;opened=bus;clock_ms=probes=0;prepare_ctx_t ctx;ctx.final_attempt=final;ctx.transaction=&tx;
+ board_result_t r;r.assign(&desc_papermono);int papermono_power=1,stopwatch_power=0;
+ bool ok=refine_member(r,ctx);assert(ok==((bus&&response)||final));
+ assert(r.def==&desc_papermono.def&&r.provisional==(final&&!(bus&&response)));
+ assert(probes==(bus?(response?1:200):0));assert(papermono_power==1&&stopwatch_power==0);
+}}
+`,"PM1 post-power refine");
 });
