@@ -2602,7 +2602,7 @@ test("CoreS3 family catalog keeps shared wiring and option power variants", asyn
   assert.match(coreSource, /i2c_camera::i2c_addr[\s\S]*?i2c_camera::id_reg[\s\S]*?i2c_camera::id_value/);
   assert.match(coreSource, /One post-power read is deliberately retained[\s\S]*?camera_id\(probe\)/);
   assert.match(coreSource, /camera_id\(ctx\)[\s\S]*?probe_dedicated_pin_release[\s\S]*?RELEASE_AMBIGUOUS[\s\S]*?awaiting member refinement/);
-  assert.match(coreSource, /band == release_unavailable[\s\S]*?fallback\(&desc_cores3se/);
+  assert.match(coreSource, /band == release_unavailable[\s\S]*?result\.assign\(&desc_cores3se\)/);
   assert.match(coreSource, /release_unavailable = !release\.available/);
   assert.match(coreSource, /internal_camera_confirmed[\s\S]*?if \(!confirmed_before_power\)/);
   assert.match(coreSource, /i2c_stackchan_ioe::i2c_addr[\s\S]*?i2c_stackchan_ioe::firmware_reg[\s\S]*?i2c_stackchan_ioe::firmware_min/);

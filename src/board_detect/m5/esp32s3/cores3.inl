@@ -6,6 +6,10 @@
     constexpr std::uint32_t internal_camera_confirmed =
       generated_options::cores3::internal_camera_confirmed;
     constexpr std::uint8_t release_unavailable = 3;
+    static_assert(release_unavailable != static_cast<unsigned>(pin_release_band_t::short_release)
+               && release_unavailable != static_cast<unsigned>(pin_release_band_t::ambiguous)
+               && release_unavailable != static_cast<unsigned>(pin_release_band_t::long_release),
+                  "Unavailable release must not alias a measured band");
     constexpr int sda = wiring::cores3::internal_i2c_sda;
     constexpr int scl = wiring::cores3::internal_i2c_scl;
     constexpr std::uint32_t i2c_freq = specs::cores3::pmic::i2c_freq;
@@ -238,6 +242,33 @@
       return gate;
     }
 
+    bool stackchan_ack(const prepare_ctx_t& ctx, bool gate)
+    {
+#if defined(M5GFX_AUTODETECT_TEST_CORES3_FORCE_STACKCHAN)
+      return true;
+#else
+      // Initialize once; repeated ACKs must neither recover SDA nor resample pulls.
+      startup_detail::i2c_scope_t i2c(*ctx.transaction, ctx.i2c_port_probe, desc_cores3.internal_i2c);
+      if (!i2c.opened) { return false; }
+      const auto started = lgfx::millis();
+      do
+      {
+#if defined(M5GFX_AUTODETECT_TEST_CORES3_STACKCHAN_NACK)
+        const bool ack = false;
+#else
+        const bool began = lgfx::i2c::beginTransaction(
+          i2c.port, specs::stackchan::i2c_stackchan_ioe::i2c_addr,
+          specs::stackchan::i2c_stackchan_ioe::i2c_freq, false).has_value();
+        const bool ended = lgfx::i2c::endTransaction(i2c.port).has_value();
+        const bool ack = began && ended;
+#endif
+        // An in-flight ACK uses the existing fixed timeout and may overrun 50 ms.
+        if (ack || !gate || lgfx::millis() - started >= 50) { return ack; }
+        lgfx::delay(1);
+      } while (true);
+#endif
+    }
+
     bool refine(board_result_t& result, const prepare_ctx_t& ctx)
     {
       if (result.option & vbus_5v) { enable_bus_out(ctx); }
@@ -256,7 +287,29 @@
         has_camera = camera_id(probe);
 #endif
       }
-      bool ioe_ack = false;
+      probe_ctx_t probe;
+      static_cast<prepare_ctx_t&>(probe) = ctx;
+      const bool gate = stackchan_base_gate(probe);
+      const bool ioe_ack = stackchan_ack(ctx, gate);
+      std::uint8_t firmware = 0;
+      bool firmware_read = false;
+      if (ioe_ack)
+      {
+#if defined(M5GFX_AUTODETECT_TEST_CORES3_FORCE_STACKCHAN)
+        firmware = specs::stackchan::i2c_stackchan_ioe::firmware_min;
+        firmware_read = true;
+#else
+        firmware_read = read(ctx, specs::stackchan::i2c_stackchan_ioe::i2c_addr,
+                             specs::stackchan::i2c_stackchan_ioe::firmware_reg,
+                             &firmware, specs::stackchan::i2c_stackchan_ioe::i2c_freq);
+#endif
+      }
+      if (gate && !ioe_ack)
+      {
+        // An M-Bus module can mimic the base gate, adding at most a 50 ms
+        // new-probe window; an in-flight fixed-time I2C call may overrun it.
+        ESP_LOGW("M5GFX", "[Autodetect] StackChan base gate without IOE ACK");
+      }
       const auto possible = [&](board_id_t id) -> const board_desc_t*
       {
         if (id == desc_cores3.def.id) { return &desc_cores3; }
@@ -279,9 +332,11 @@
         { return fallback(&desc_cores3, "CoreS3 release ambiguous and camera unanswered"); }
         if (band == release_unavailable)
         {
-          // Unavailability is stable this boot, but preserve all five attempts
-          // for the session's explicit-preference handoff before provisional SE.
-          return fallback(&desc_cores3se, "CoreS3 release unavailable and camera unanswered");
+          // Dedicated GPIO timing can be unavailable from an unpinned task.
+          // Retain legacy camera-absence selection so normal SE boots do not
+          // regress to five retries and an uncached candidate; elimination remains.
+          result.assign(&desc_cores3se);
+          return refine_panel(result, ctx);
         }
         ESP_LOGW("M5GFX", "[Autodetect] CoreS3 capacitance indicated camera family, but camera ID was unavailable");
       }
@@ -289,46 +344,8 @@
       {
         ESP_LOGW("M5GFX", "[Autodetect] CoreS3 capacitance indicated SE, but camera ID matched; using camera family");
       }
-      probe_ctx_t probe;
-      static_cast<prepare_ctx_t&>(probe) = ctx;
-      const bool gate = stackchan_base_gate(probe);
-      const auto started = lgfx::millis();
-      do
-      {
-#if defined(M5GFX_AUTODETECT_TEST_CORES3_FORCE_STACKCHAN)
-        ioe_ack = true;
-#elif defined(M5GFX_AUTODETECT_TEST_CORES3_STACKCHAN_NACK)
-        ioe_ack = false;
-#else
-        // ACK polling must not reuse the probe's cached first NACK.
-        probe_ctx_t ack_probe;
-        static_cast<prepare_ctx_t&>(ack_probe) = ctx;
-        ioe_ack = probe_i2c_ack(ack_probe, sda, scl, specs::stackchan::i2c_stackchan_ioe::i2c_addr);
-#endif
-        if (ioe_ack || !gate || lgfx::millis() - started >= 50) { break; }
-        lgfx::delay(1);
-      } while (true);
-      std::uint8_t firmware = 0;
-      bool firmware_read = false;
-      if (ioe_ack)
-      {
-#if defined(M5GFX_AUTODETECT_TEST_CORES3_FORCE_STACKCHAN)
-        firmware = specs::stackchan::i2c_stackchan_ioe::firmware_min;
-        firmware_read = true;
-#else
-        firmware_read = read(ctx, specs::stackchan::i2c_stackchan_ioe::i2c_addr,
-                             specs::stackchan::i2c_stackchan_ioe::firmware_reg,
-                             &firmware, specs::stackchan::i2c_stackchan_ioe::i2c_freq);
-#endif
-      }
-      if (gate && ioe_ack && !firmware_read)
+      if (ioe_ack && !firmware_read)
       { return fallback(&desc_stackchan, "StackChan ACK but firmware unreadable"); }
-      if (gate && !ioe_ack)
-      {
-        // An M-Bus module can mimic the base gate, adding at most a 50 ms
-        // new-probe window; an in-flight fixed-time I2C call may overrun it.
-        ESP_LOGW("M5GFX", "[Autodetect] StackChan base gate without IOE ACK; using CoreS3");
-      }
       // Older base firmware remains CoreS3, matching the established contract.
       result.assign(firmware_read && firmware >= specs::stackchan::i2c_stackchan_ioe::firmware_min
                     ? &desc_stackchan : &desc_cores3);
