@@ -1132,7 +1132,8 @@ namespace board_detect
       const ops::gpio_scope_t gpio_scope { GPIO_NUM_MAX, gpio_pins.data, gpio_pins.size };
       return ops::run_ops(ops::lgfx_backend(&backend_context),
                           power.devices, power.device_count,
-                          sequence.data, sequence.size, gpio_scope, policy);
+                          sequence.data, sequence.size, gpio_scope, policy,
+                          ops::lgfx_wait_ready_finished);
     }
 
     const pmic_variant_t* read_variant(const power_desc_t& power, int port,

@@ -266,10 +266,10 @@ namespace papermono {constexpr int internal_i2c_sda=1,internal_i2c_scl=2;}}
 namespace detail {constexpr int stopwatch_probe_addr=0x15,papermono_probe_addr=0x38;
 bool refine_papermono_touch(board_result_t&,const prepare_ctx_t&){return true;}}
 struct pulls_t {std::uint64_t pulldown_high,pullup_high;};
-int sw,pm,g12,g13,reads;bool ready=true;
+int sw,pm,g12,g13,reads;
 pulls_t probe_pin_pulls(probe_ctx_t&,std::uint64_t){return {std::uint64_t(g12&1)<<12|std::uint64_t(g13&1)<<13,std::uint64_t((g12>>1)&1)<<12|std::uint64_t((g13>>1)&1)<<13};}
 bool probe_i2c_ack(probe_ctx_t&,int,int,int addr){++reads;assert(addr==0x15||addr==0x38);return addr==0x15?sw:pm;}
-bool probe_i2c_read(probe_ctx_t&,int,int,int addr,int,std::uint8_t* data,int,int,int){data[0]=0x50;data[1]=0x20;return addr==0x6e||ready;}
+bool probe_i2c_read(probe_ctx_t&,int,int,int addr,int,std::uint8_t* data,int,int,int){data[0]=0x50;data[1]=0x20;assert(addr==0x6e);return true;}
 bool select_provisional_member(const prepare_ctx_t& ctx,board_result_t* result,const board_desc_t* preferred_if_possible,const board_desc_t* hinted_if_possible,const board_desc_t* family_default,const char* why) ${helper}
 bool confirm_member(probe_ctx_t& ctx,board_result_t* result) ${confirm}
 int main(){
@@ -280,10 +280,9 @@ int main(){
  board_result_t r;reads=0;bool ok=confirm_member(ctx,&r);assert(reads==2);
  int expected=0;bool provisional=false,refine=false;
  if(sw!=pm)expected=sw?20:21;
- else if(!sw&&g12==0&&g13==0){expected=21;refine=true;}
+ else if(!sw&&((g12==0&&g13==0)||(g12==3&&g13==3))){expected=21;refine=true;}
  else if(final){provisional=true;
  if(!sw&&(g12==2||(g12==0&&g13==3)))expected=20;
- else if(!sw&&g12==3)expected=21;
  else expected=(preferred==20||preferred==21)?preferred:(hint==20||hint==21)?hint:0;}
  assert(ok==(expected!=0));int stopwatch_power=0,papermono_power=0;
  if(ok){assert(r.def->id==expected&&r.provisional==provisional);
@@ -291,7 +290,6 @@ int main(){
  detect_outcome_t out;out.result=r;if(provisional)assert(!should_persist_detection(out,0));}
  assert(stopwatch_power==(ok&&expected==20));assert(papermono_power==(ok&&expected==21));
  }
- ready=false;probe_ctx_t ctx;ctx.final_attempt=true;sw=1;pm=0;board_result_t r;assert(!confirm_member(ctx,&r));
 }
 `,"PM1 pre-power table");
 });

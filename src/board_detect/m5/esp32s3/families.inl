@@ -530,11 +530,8 @@ namespace m5
       {
         return false;
       }
-      std::uint8_t ioe_id[2] = {};
-      // IOE1 readiness gates power writes, not family identification.
-      const bool ready = probe_i2c_read(ctx, wiring::stopwatch::internal_i2c_sda,
-                          wiring::stopwatch::internal_i2c_scl, 0x4F, 0,
-                          ioe_id, sizeof(ioe_id), 100000, 200);
+      // IOE1 takes hundreds of milliseconds to boot; its presence is not
+      // member evidence. Wait only when its selected power sequence needs it.
       const bool stopwatch_touch = probe_i2c_ack(
         ctx, wiring::stopwatch::internal_i2c_sda,
         wiring::stopwatch::internal_i2c_scl, detail::stopwatch_probe_addr);
@@ -549,20 +546,20 @@ namespace m5
         return "DXFU"[sample];
       };
       const char g12 = classify(12), g13 = classify(13);
-      ESP_LOGD("board_detect_m5", "PM1 attempt=%u ready=%u touch15=%u touch38=%u G12=%c G13=%c",
-               ctx.attempt, ready, stopwatch_touch, papermono_touch, g12, g13);
-      if (!ready) { return false; }
+      ESP_LOGD("board_detect_m5", "PM1 attempt=%u touch15=%u touch38=%u G12=%c G13=%c",
+               ctx.attempt, stopwatch_touch, papermono_touch, g12, g13);
       // Both members carry NFC at 0x50; its ACK cannot exclude StopWatch.
       if (stopwatch_touch != papermono_touch)
       {
         result->assign(stopwatch_touch ? &desc_stopwatch : &desc_papermono);
         return true;
       }
-      if (!stopwatch_touch && g12 == 'D' && g13 == 'D')
+      if (!stopwatch_touch
+       && ((g12 == 'D' && g13 == 'D') || (g12 == 'U' && g13 == 'U')))
       {
-        // Cold PaperMono needs power before touch confirmation. This remaining
-        // pre-confirmation write also admits StopWatch with unanswered touch and
-        // both IRQ lines low.
+        // Cold PaperMono needs power before touch confirmation, even after its
+        // SD pull-ups rise. This pre-confirmation write also admits StopWatch
+        // with unanswered touch and both IRQ lines low or both driven high.
         result->assign(&desc_papermono);
         result->refine = detail::refine_papermono_touch;
         return true;
@@ -571,7 +568,6 @@ namespace m5
       if (!stopwatch_touch)
       {
         if (g12 == 'F' || (g12 == 'D' && g13 == 'U')) { chosen = &desc_stopwatch; }
-        else if (g12 == 'U') { chosen = &desc_papermono; }
       }
       if (chosen)
       {
