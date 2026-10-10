@@ -798,7 +798,7 @@ namespace m5gfx
     bool direct_setup = false;
   };
 
-  static detection_package_t select_detection_package(bool legacy_autodetect = false)
+  __attribute__((always_inline)) static inline detection_package_t select_detection_package(bool legacy_autodetect = false)
   {
     detection_package_t package;
     (void)legacy_autodetect;

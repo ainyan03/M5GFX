@@ -19,7 +19,7 @@ namespace board_detect
     bool reject_initial_hint = false;
   };
 
-  inline bool session_hint_allowed(const detect_session_policy_t& policy, board_id_t hint)
+  __attribute__((always_inline)) inline bool session_hint_allowed(const detect_session_policy_t& policy, board_id_t hint)
   {
     if (hint == board_id_unknown || policy.hint_gate == nullptr) { return true; }
     for (auto p = policy.hint_gate; *p != board_id_unknown; ++p)
@@ -31,8 +31,9 @@ namespace board_detect
 
   // RunAttempt owns each GPIO/bus transaction and the prepare/construct/adopt
   // steps. Session state keeps the first weak candidate across failed attempts.
+  // Keep constant chip policies visible to the caller under size optimization.
   template <typename RunAttempt>
-  detect_outcome_t run_detection_session(detect_request_t request,
+  __attribute__((always_inline)) inline detect_outcome_t run_detection_session(detect_request_t request,
                                          const detect_session_policy_t& policy,
                                          RunAttempt run_attempt)
   {
