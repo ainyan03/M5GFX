@@ -13,6 +13,9 @@ test("production attempt yields before construction and preserves adoption and r
   const main = await fs.readFile(path.join(src, "M5GFX.cpp"), "utf8");
   const attempt = body(main, "static board_detect::detect_outcome_t run_detection_attempt(");
   const compat = body(main, "board_t M5GFX::autodetect(");
+  const projection = main.slice(main.indexOf("    const auto board = outcome.setup_succeeded"), main.indexOf("#if defined ( ARDUINO_M5STACK_ATOM )", main.indexOf("    const auto board = outcome.setup_succeeded")));
+  const header = await fs.readFile(path.join(src, "M5GFX.h"), "utf8");
+  const candidateGetter = body(header, "board_t getBoardCandidate(");
   await compileRun(`
 #include "board_detect/detect_session.hpp"
 #include <cassert>
@@ -60,6 +63,10 @@ package_t select_detection_package(bool) {return active_package;}
 bool reject_detected_setup(board_t) {return false;}
 struct holder_t {int* get() {return nullptr;}};
 struct M5GFX {
+ board_t _board=board_t::board_unknown,_board_candidate=board_t::board_unknown;
+ board_t getBoard() const {return _board;}
+ board_t getBoardCandidate() const ${candidateGetter}
+ void project(const board_detect::detect_outcome_t& outcome) { ${projection} }
  struct {board_t fallback_board=board_t::board_unknown;} _detect_config;
  holder_t _panel_last;
  void panel(int*) {}
@@ -83,6 +90,9 @@ int main() {
   });
   const bool yields=provisional && preferred==2 && prepare_ok;
   const bool success=failure==0 && !yields;
+  M5GFX standalone;standalone.project(out);
+  assert(standalone.getBoard()==(success?board_t::member:board_t::board_unknown));
+  assert(standalone.getBoardCandidate()==(provisional&&!success?board_t::member:board_t::board_unknown));
   assert(out.setup_succeeded==success);
   assert(out.verdict==(provisional ? verdict_t::candidate : verdict_t::confirmed));
   assert(out.candidate_kind==(provisional ? candidate_kind_t::provisional : candidate_kind_t::none));
