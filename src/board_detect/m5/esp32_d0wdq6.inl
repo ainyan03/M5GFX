@@ -213,7 +213,11 @@ namespace m5
 
   namespace detail
   {
-    bool refine_core_family(board_result_t& result, const prepare_ctx_t& ctx)
+    const pmic_variant_t* observe_core_pmic(int port)
+    { return startup_detail::read_variant(desc_core2.power, port); }
+
+    bool observe_core_panel(board_result_t& result, const prepare_ctx_t& ctx,
+                            panel_variant_t& variant, std::uint32_t keys[4])
     {
       const auto& display = desc_core2.display;
       const std::int8_t signals[] = {
@@ -223,9 +227,8 @@ namespace m5
       startup_detail::pin_level(desc_core2.sd.sd_cs, true);
       soft_spi_t bus(display.sclk, display.mosi, display.mosi, display.dc);
       bus.init();
-      std::uint32_t keys[4] = {};
       // Without reset, leave the same 120 ms window for a waking panel.
-      auto variant = identify_panel_variant(bus, display.cs, keys,
+      variant = identify_panel_variant(bus, display.cs, keys,
                                             ctx.allow_reset ? 1 : 120);
       if (ctx.allow_reset)
       {
@@ -245,6 +248,18 @@ namespace m5
           for (int i = 0; i < 4; ++i) { keys[i] = after_keys[i]; }
         }
       }
+      return true;
+    }
+
+    bool refine_core_family(board_result_t& result, const prepare_ctx_t& ctx)
+    {
+      const auto& display = desc_core2.display;
+      const std::int8_t signals[] = {
+        display.dc, display.sclk, display.mosi, display.miso
+      };
+      std::uint32_t keys[4] = {};
+      panel_variant_t variant;
+      if (!observe_core_panel(result, ctx, variant, keys)) { return false; }
       startup_detail::i2c_scope_t i2c(*ctx.transaction, ctx.i2c_port_probe,
                                        desc_core2.internal_i2c);
       if (!i2c.opened)
@@ -339,7 +354,7 @@ namespace m5
       if (!i2c.opened) { return false; }
       prepare_ctx_t prepare_ctx = ctx;
       prepare_ctx.i2c_port_probe = i2c.port;
-      const auto* pmic = startup_detail::read_variant(desc_core2.power, i2c.port);
+      const auto* pmic = detail::observe_core_pmic(i2c.port);
       if (pmic == nullptr) { return false; }
       ESP_LOGD("board_detect_m5", "power controller id=%02x", pmic->id_value);
 
