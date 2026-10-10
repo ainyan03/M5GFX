@@ -20,7 +20,6 @@ namespace board_detect
   {
     // A retry must not override the caller's reset policy.
     bool allow_reset = true;
-    bool collect_reset_option = false;
     board_id_t hint = board_id_unknown;
     board_id_t preferred = board_id_unknown;
     std::uint8_t attempt = 0;

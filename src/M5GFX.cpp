@@ -1145,7 +1145,6 @@ namespace m5gfx
     result.assign(&desc);
     prepare_ctx_t ctx;
     ctx.allow_reset = allow_reset;
-    ctx.collect_reset_option = true;
     ctx.i2c_port_probe = probe_i2c_port;
     ctx.transaction = &transaction;
     const int port = desc.internal_i2c.hw_port;
