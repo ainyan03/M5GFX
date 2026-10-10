@@ -267,6 +267,9 @@ namespace m5
         if (core2) { break; }
         lgfx::delay(1);
       } while (lgfx::millis() - touch_start < touch_startup_poll_ms);
+#if defined (M5GFX_AUTODETECT_TEST_FAIL_CORE2_TOUCH)
+      tough = core2 = false;
+#endif
       // Core2 requires its own touch response; a Station LCD miss on shared
       // AXP192 must not be saved as Core2 when neither touch answers.
       if (!tough && !core2)

@@ -765,6 +765,11 @@ namespace m5
           wiring::cardputer_adv::internal_i2c_scl, 0x34);
         if (!variant_unanswered) { chosen = &desc_cardputer_adv; }
       }
+#if defined (M5GFX_AUTODETECT_TEST_FAIL_CARDPUTER_VARIANT)
+      if ((pulls.pulldown_high & vameter_mask) == vameter_mask
+       || (pulls.pulldown_high & adv_mask) == adv_mask)
+      { variant_unanswered = true; }
+#endif
       if (variant_unanswered)
       {
         if (!ctx.final_attempt) { return false; }
