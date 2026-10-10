@@ -31,6 +31,7 @@ namespace lgfx { namespace i2c { bool isInitialized(int) { return false; } } }
 namespace m5gfx { namespace board_detect {
 struct board_desc_t { board_def_t def; struct { int hw_port; } internal_i2c; struct { const int* data; int size; } hold_high_pins; };
 void board_result_t::assign(const board_desc_t* d) { desc=d; def=&d->def; }
+const board_desc_t* refined_member=nullptr;
 struct board_detector_t {};
 struct prepare_ctx_t { bool allow_reset; board_id_t preferred; unsigned attempt; bool final_attempt; int i2c_port_probe; detection_transaction_t* transaction; const board_id_t* enabled_ids; };
 struct probe_ctx_t : prepare_ctx_t { bool confirm_attempted; };
@@ -44,7 +45,8 @@ struct detection_transaction_t {
 };
 board_result_t detected;
 board_result_t detect_board(const board_detector_t* const*, board_id_t, probe_ctx_t& p) {p.confirm_attempted=true; return detected;}
-bool prepare(const board_desc_t&, board_result_t& r, const prepare_ctx_t&) {if(power_failed) {r.provisional=true;} return prepare_ok;}
+bool prepare(const board_desc_t&, board_result_t& r, const prepare_ctx_t&) {if(power_failed) {r.provisional=true;} else if(refined_member) {r.assign(refined_member);}
+ return prepare_ok;}
 namespace m5 {
 namespace wiring { namespace detection { const int unconditional_pins=0; } }
 struct display_parts_t {int* bus=nullptr;int* panel=nullptr;int* light=nullptr;int* touch=nullptr;};
@@ -96,13 +98,27 @@ int main() {
   assert(out.setup_succeeded==success);
   assert(out.verdict==(provisional ? verdict_t::candidate : verdict_t::confirmed));
   assert(out.candidate_kind==(provisional ? candidate_kind_t::provisional : candidate_kind_t::none));
-  assert(out.attempts==(success||yields ? 1:5));
+  assert(out.attempts==(success ? 1:5));
   assert(construct_count==(failure==1||yields ? 0:out.attempts));
   assert(adopt_count==(failure==1||failure==2||yields ? 0:out.attempts));
   assert(commit_count==int(success)); assert(rollback_count==(success ? 0:out.attempts));
   assert(!yields || out.result.candidate==&desc.def);
   assert(should_persist_detection(out,0)==(success&&!provisional));
  }
+ // A retained power failure retries without construction, then refinement can select the preference.
+ const board_desc_t preferred_desc={{2,"preferred",0},{-1},{nullptr,0}};
+ rollback_count=commit_count=construct_count=adopt_count=reset_count=0;
+ detected={};detected.assign(&desc);detected.status=detect_status_t::matched;
+ prepare_ok=construct_ok=adopt_ok=true;no_display=false;refined_member=&preferred_desc;
+ detect_request_t recovery;recovery.preferred=2;recovery.max_attempts=5;
+ auto recovered=run_detection_session(recovery,[&](const detect_request_t& r,bool final) {
+  power_failed=r.attempt==0;
+  return run_detection_attempt(list,r,final,[](m5::display_parts_t&,board_t){++adopt_count;return true;});
+ });
+ assert(recovered.attempts==2&&recovered.setup_succeeded&&recovered.result.def==&preferred_desc.def);
+ assert(recovered.verdict==verdict_t::confirmed&&recovered.candidate_kind==candidate_kind_t::none);
+ assert(construct_count==1&&adopt_count==1&&rollback_count==1&&commit_count==1);
+ refined_member=nullptr;
  // The protected compatibility wrapper must deliver QFN40 weak candidates.
  detected={};detected.candidate=&desc.def;detected.status=detect_status_t::no_match;
  active_package.detectors=list;M5GFX gfx;board_t candidate=board_t::board_unknown;
@@ -132,7 +148,7 @@ struct M5GFX {detect_config_t _detect_config;bool _detect_started=false;board_t 
 };
 int main(){M5GFX gfx;detect_config_t cfg;assert(gfx.getDetectConfig().fallback_board==board_t::board_unknown);
  cfg.fallback_board=board_t::member;gfx.setDetectConfig(cfg);assert(warnings==0);
- gfx._detect_started=true;gfx.setDetectConfig(cfg);assert(warnings==1);assert(gfx.adopted==board_t::board_unknown);
+ gfx._detect_started=true;gfx.setDetectConfig(cfg);assert(warnings==2);assert(gfx.adopted==board_t::board_unknown);
  gfx.adopted=board_t::member;cfg.fallback_board=board_t::other;gfx.setDetectConfig(cfg);
  assert(warnings==2);assert(gfx.adopted==board_t::member);assert(gfx.getDetectConfig().fallback_board==board_t::other);
  cfg.fallback_board=board_t::board_unknown;gfx.setDetectConfig(cfg);assert(gfx.getDetectConfig().fallback_board==board_t::board_unknown);

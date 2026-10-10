@@ -30,7 +30,7 @@ int main()
       return out;
     });
     const bool yields = verdict == 2 && preferred != 0 && preferred != member.id;
-    assert(calls == unsigned(verdict < 2 || yields || adopted ? 1 : 5));
+    assert(calls == unsigned(verdict < 2 || (adopted && !yields) ? 1 : 5));
     assert(construct == (verdict < 2 || yields ? 0 : calls)); assert(adopt == construct);
     const auto board = outcome.setup_succeeded ? outcome.result.def->id : board_id_unknown;
     const auto candidate = board ? board_id_unknown : outcome.result.candidate ? outcome.result.candidate->id : board_id_unknown;
@@ -43,7 +43,7 @@ int main()
     assert(!should_persist_detection(outcome, member.id));
     ++cases;
   }
-  // A weak candidate survives unknown attempts; provisional replaces it and ends.
+  // A weak candidate survives unknown attempts; provisional replaces it through the final retry.
   detect_request_t request; request.max_attempts = 5; request.hint = other.id; request.preferred = other.id;
   auto out = run_detection_session(request, [&](const detect_request_t& r, bool final) {
     assert(r.hint == other.id); assert(r.preferred == other.id); assert(final == (r.attempt == 4));
@@ -53,7 +53,7 @@ int main()
     if (r.attempt == 3) { result.result.def = &member; result.result.provisional = true; assert(!finalize_prepared_result(result, r.preferred)); }
     return result;
   });
-  assert(out.attempts == 4 && out.result.candidate == &member && out.candidate_kind == candidate_kind_t::provisional);
+  assert(out.attempts == 5 && out.result.candidate == &member && out.candidate_kind == candidate_kind_t::provisional);
   assert(!should_persist_detection(out, 0));
   // A provisional setup failure cannot be downgraded by weak/unknown retries.
   request.preferred = 0;
@@ -65,6 +65,16 @@ int main()
   });
   assert(out.attempts == 5 && out.result.candidate == &member && out.candidate_kind == candidate_kind_t::provisional);
   assert(out.verdict == verdict_t::candidate);
+  // An early mismatch may refine successfully on the next attempt.
+  request.preferred = other.id;
+  out = run_detection_session(request, [&](const detect_request_t& r, bool) {
+    detect_outcome_t result; result.result.def = r.attempt == 0 ? &member : &other;
+    result.result.provisional = r.attempt == 0;
+    if (finalize_prepared_result(result, r.preferred)) { result.setup_succeeded = true; }
+    return result;
+  });
+  assert(out.attempts == 2 && out.setup_succeeded && out.result.def == &other);
+  request.preferred = 0;
   // Reset escalation and immutable hint remain true through the final retry.
   out = run_detection_session(request, [&](const detect_request_t& r, bool final) {
     assert(r.hint == other.id); assert(final == (r.attempt == 4)); assert(r.allow_reset == (r.attempt >= 3));

@@ -188,6 +188,14 @@ int main() {
  if(values[2]&2u) ${bypass}
  finalize_prepared_result(out,0);out.setup_succeeded=true;return out;});
  assert(out.attempts==(hinted?1:5));assert(out.result.provisional);assert(!should_persist_detection(out,0));
+ req.preferred=desc_core2.def.id;
+ out=run_detection_session(req,[&](const detect_request_t& r,bool last){hw_ctx_t ctx;ctx.hint=r.hint;ctx.final_attempt=last;detect_outcome_t out;
+ if(!stack_signature(ctx)){return out;}
+ const auto& values=ctx.detector_workspace.values;auto* result=&out.result;result->def=&desc_stack.def;
+ if(values[2]&2u) ${bypass}
+ if(finalize_prepared_result(out,r.preferred)) {out.setup_succeeded=true;}return out;});
+ assert(out.attempts==5&&!out.setup_succeeded&&out.result.candidate==&desc_stack.def);
+ req.preferred=0;
  }
 }
 `,"Atom and Stack timing");

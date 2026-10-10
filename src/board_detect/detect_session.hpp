@@ -40,7 +40,8 @@ namespace board_detect
     {
       request.attempt = static_cast<std::uint8_t>(attempt);
       if (attempt + 2 == request.max_attempts) { request.allow_reset = true; }
-      outcome = run_attempt(request, attempt + 1 == request.max_attempts);
+      const bool final_attempt = attempt + 1 == request.max_attempts;
+      outcome = run_attempt(request, final_attempt);
       outcome.attempts = ++attempts;
       if (outcome.setup_succeeded) { return outcome; }
       // Failed setup still leaves stronger family evidence than a weak hint.
@@ -57,8 +58,10 @@ namespace board_detect
       outcome.result.candidate = candidate;
       if (outcome.verdict != verdict_t::confirmed && candidate != nullptr)
       { outcome.verdict = verdict_t::candidate; outcome.candidate_kind = kind; }
-      // Yield to the caller's explicit preference without repeating setup.
-      if (outcome.reason == fail_reason_t::family_unresolved
+      // A mismatched preference retries until the final attempt. A retained
+      // power failure skips member selection; a retry can run refinement once
+      // power preparation succeeds and apply the observed member preference.
+      if (final_attempt && outcome.reason == fail_reason_t::family_unresolved
        && outcome.candidate_kind == candidate_kind_t::provisional) { return outcome; }
       if (outcome.reason == fail_reason_t::no_signature) { return outcome; }
     }
