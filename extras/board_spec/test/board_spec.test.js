@@ -640,7 +640,7 @@ test("explicit fallback takes precedence over detector candidates", async (t) =>
   assert.ok(explicit >= 0 && explicit < candidate && candidate < build);
   assert.match(selection, /if \(!board_detected\)/);
   const defaults = await fs.readFile(path.join(m5unified, "src/M5Unified.inl"), "utf8");
-  assert.match(defaults, /BOARD_ID == 147[\s\S]*?return board_t::board_M5DualKey;/);
+  assert.doesNotMatch(defaults, /BOARD_ID/);
   assert.match(defaults, /get_pkg_ver\(\) == 1\) \{ return board_t::board_M5StampS3Mini; \}/);
 });
 

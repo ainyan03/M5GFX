@@ -197,6 +197,53 @@ int main(){
 `,"fixed construction variants");
 });
 
+test("M5Unified BOARD_ID guard accepts positive values without M5GFX_BOARD and fixed selection wins", async (t) => {
+ const unified=process.env.M5UNIFIED_PATH||path.resolve(src,"../../M5Unified");
+ let header;try{header=await fs.readFile(path.join(unified,"src/M5Unified.hpp"),"utf8");}catch{return t.skip("M5Unified checkout absent");}
+ const guard=/#if defined \(BOARD_ID\) && \(\(BOARD_ID \+ 0\) > 0\)[\s\S]*?#endif/.exec(header)?.[0];
+ assert.ok(guard);
+ const start=header.indexOf("      const auto fixed_board = Display.getFixedBoard();");
+ const end=header.indexOf("      _board = board;",start)+"      _board = board;".length;
+ const selection=header.slice(start,end);
+ const definitions=["","#define BOARD_ID","#define BOARD_ID 0","#define BOARD_ID 10"];
+ for(const define of definitions){
+  await compileRun(`
+#include <cassert>
+#include <cstddef>
+${define}
+enum class board_t{board_unknown=0,fixed=1,fallback=2,candidate=3,default_board=4};
+struct config_t {board_t fixed_board=board_t::board_unknown;};
+int main(){config_t detect_config;
+${guard}
+assert(static_cast<int>(detect_config.fixed_board)==${define.includes("10")?10:0});}
+`,"BOARD_ID guard");
+ }
+ await compileRun(`
+#include <cassert>
+#include <cstddef>
+#define ESP_LOG_WARN 1
+enum class board_t{board_unknown=0,fixed=1,fallback=2,candidate=3,default_board=4};
+int warnings;void Log(int,const char*,unsigned,unsigned){++warnings;}
+struct display_t {
+ board_t fixed,adopted,candidate;
+ board_t getFixedBoard(){return fixed;}board_t getBoard(){return adopted;}board_t getBoardCandidate(){return candidate;}
+};
+struct unified_t {
+ display_t Display;struct {board_t fallback_board;} cfg;
+ board_t _board;
+ board_t _default_fallback_board(){return board_t::default_board;}
+ void select(){
+ ${selection}
+ }
+};
+int main(){for(int fixed=0;fixed<2;++fixed)for(int adopted=0;adopted<2;++adopted)for(int fallback=0;fallback<2;++fallback)for(int candidate=0;candidate<2;++candidate){
+ warnings=0;unified_t u;u.Display={fixed?board_t::fixed:board_t::board_unknown,adopted?board_t::fallback:board_t::board_unknown,candidate?board_t::candidate:board_t::board_unknown};u.cfg.fallback_board=fallback?board_t::fallback:board_t::board_unknown;
+ u.select();assert(u._board==(fixed?board_t::fixed:adopted||fallback?board_t::fallback:candidate?board_t::candidate:board_t::default_board));
+ assert(warnings==(fixed&&fallback));
+}}
+`,"fixed and fallback selection");
+});
+
 test("fixed Tough backlight follows observed PMIC while its panel and touch remain fixed", async () => {
  const setup=await fs.readFile(path.join(src,"board_detect/m5/esp32_d0wdq6_setup.inl"),"utf8");
  const construct=body(setup,"construct_status_t construct_tough(");
