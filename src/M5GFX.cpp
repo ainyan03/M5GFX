@@ -1108,6 +1108,24 @@ namespace m5gfx
     for (std::size_t i = 0; i < desc.hold_high_pins.size; ++i) { add_pin(desc.hold_high_pins.data[i]); }
     for (std::size_t i = 0; i < desc.op_gpio_pins.size; ++i) { add_pin(desc.op_gpio_pins.data[i]); }
     if (!complete) { return outcome; }
+#if defined(CONFIG_IDF_TARGET_ESP32S3)
+    if (conditional_detection_pins_unavailable())
+    {
+      for (std::size_t i = 0; i < count; ++i)
+      {
+        for (const auto reserved : m5::wiring::detection::opi_pins)
+        {
+          if (owned[i] == reserved)
+          {
+            // Acceptance is chip-based; active memory ownership can prevent startup.
+            ESP_LOGW(LIBRARY_NAME, "Fixed board:%u needs active OPI PSRAM pin:%d",
+                     unsigned(desc.def.id), int(reserved));
+            return outcome;
+          }
+        }
+      }
+    }
+#endif
     detection_transaction_t transaction({ owned, static_cast<std::uint8_t>(count) }, no_pins(), false);
     if (!transaction.valid()) { return outcome; }
     // Fixed startup must not inherit a detected member's state or refinement.
