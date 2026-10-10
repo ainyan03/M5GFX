@@ -28,7 +28,7 @@ test("production CoreS3 refinement covers camera, release band and gated IOE out
  const refine=body(source,'bool refine(board_result_t& result, const prepare_ctx_t& ctx)\n    {');
  const gate=body(source,'bool stackchan_base_gate(');
  const ack=body(source,'bool stackchan_ack(');
- await compileRun(common+`
+ await compileRun(common.replace('#define ESP_LOGW(...) ((void)0)', '#include <cstring>\nint gate_warnings;\n#define ESP_LOGW(tag, message, ...) (gate_warnings += std::strstr(message, "base gate without IOE ACK") != nullptr)')+`
 const board_desc_t desc_cores3={{1,"CoreS3",0}},desc_cores3se={{2,"SE",0}},desc_stackchan={{3,"StackChan",0}};
 namespace specs {namespace stackchan {namespace i2c_stackchan_ioe {constexpr int i2c_addr=0x6f,firmware_reg=2,i2c_freq=100000,firmware_min=4;}}}
 constexpr unsigned release_unavailable=3,internal_camera_confirmed=1,vbus_5v=2;
@@ -61,7 +61,7 @@ int main(){int tx=0;
  for(board_id_t hint:{board_id_t(0),board_id_t(1),board_id_t(2),board_id_t(3),board_id_t(42)}){
  board_result_t r;r.assign(&desc_cores3);r.refine_state=band;r.option=before?1:0;
  prepare_ctx_t ctx;ctx.transaction=&tx;ctx.final_attempt=final;ctx.preferred=preference;ctx.hint=hint;
- clock_ms=panel_calls=camera_calls=gate_calls=ack_calls=firmware_calls=init_calls=release_calls=ack_end_calls=0;post_camera=after;base_gate=gate;ack_at=at;firmware_ok=read_ok;fw=firmware;
+ clock_ms=panel_calls=camera_calls=gate_calls=ack_calls=firmware_calls=init_calls=release_calls=ack_end_calls=gate_warnings=0;post_camera=after;base_gate=gate;ack_at=at;firmware_ok=read_ok;fw=firmware;
  const bool camera=before||after;bool provisional=false;int expected=0;
  const bool acknowledged=at==0||(gate&&at>=0&&at<=50);
  if(!camera&&(band==0||band==3)){expected=2;}
@@ -72,6 +72,7 @@ int main(){int tx=0;
  else expected=acknowledged&&read_ok&&firmware>=4?3:1;
  }
  const bool ok=refine_member(r,ctx);assert(ok==(expected!=0));assert(r.refine_state==0&&r.option<4);
+ assert(gate_warnings==int(gate&&!acknowledged&&(camera||band==2)));
  assert(camera_calls==int(!before)&&panel_calls==int(ok)&&gate_calls==1);
  if(ok){assert(r.def->id==expected&&r.provisional==provisional);detect_outcome_t out;out.result=r;if(provisional)assert(!should_persist_detection(out,0));}
  assert(init_calls==1&&release_calls==1&&ack_end_calls==ack_calls);

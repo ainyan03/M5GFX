@@ -247,7 +247,9 @@
 #if defined(M5GFX_AUTODETECT_TEST_CORES3_FORCE_STACKCHAN)
       return true;
 #else
-      // Initialize once; repeated ACKs must neither recover SDA nor resample pulls.
+      // Initialize once; the ACK loop does not repeat the base's pull measurements.
+      // Software I2C START may recover held SDA on each ACK with up to nine
+      // clocks and STOP.
       startup_detail::i2c_scope_t i2c(*ctx.transaction, ctx.i2c_port_probe, desc_cores3.internal_i2c);
       if (!i2c.opened) { return false; }
       const auto started = lgfx::millis();
@@ -262,7 +264,7 @@
         const bool ended = lgfx::i2c::endTransaction(i2c.port).has_value();
         const bool ack = began && ended;
 #endif
-        // An in-flight ACK uses the existing fixed timeout and may overrun 50 ms.
+        // In-flight ACK timeout and START recovery may overrun the 50 ms window.
         if (ack || !gate || lgfx::millis() - started >= 50) { return ack; }
         lgfx::delay(1);
       } while (true);
@@ -304,12 +306,6 @@
                              &firmware, specs::stackchan::i2c_stackchan_ioe::i2c_freq);
 #endif
       }
-      if (gate && !ioe_ack)
-      {
-        // An M-Bus module can mimic the base gate, adding at most a 50 ms
-        // new-probe window; an in-flight fixed-time I2C call may overrun it.
-        ESP_LOGW("M5GFX", "[Autodetect] StackChan base gate without IOE ACK");
-      }
       const auto possible = [&](board_id_t id) -> const board_desc_t*
       {
         if (id == desc_cores3.def.id) { return &desc_cores3; }
@@ -346,6 +342,12 @@
       }
       if (ioe_ack && !firmware_read)
       { return fallback(&desc_stackchan, "StackChan ACK but firmware unreadable"); }
+      if (gate && !ioe_ack)
+      {
+        // An M-Bus module can mimic the base gate, adding at most a 50 ms
+        // new-probe window; an in-flight fixed-time I2C call may overrun it.
+        ESP_LOGW("M5GFX", "[Autodetect] StackChan base gate without IOE ACK");
+      }
       // Older base firmware remains CoreS3, matching the established contract.
       result.assign(firmware_read && firmware >= specs::stackchan::i2c_stackchan_ioe::firmware_min
                     ? &desc_stackchan : &desc_cores3);
