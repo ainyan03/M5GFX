@@ -297,7 +297,8 @@ int main(){
 test("production PM1 D/D refinement polls only PaperMono and never switches power", async () => {
  const source=await fs.readFile(path.join(src,"m5/esp32s3/families.inl"),"utf8");
  const refine=body(source,'bool refine_papermono_touch');
- await compileRun(common.replace('bool final_attempt=false;','bool final_attempt=false; int* transaction=nullptr; int i2c_port_probe=0;')+`
+ await compileRun(common.replace('bool final_attempt=false;','bool final_attempt=false; int* transaction=nullptr; int i2c_port_probe=0;')
+ .replace('#define ESP_LOGW(...) ((void)0)', '#include <cstring>\nconst char* last_reason;\n#define ESP_LOGW(tag, format, reason, ...) (last_reason=reason)')+`
 const board_desc_t desc_papermono={{21,"PaperMono",0}};
 namespace specs {namespace papermono {namespace touch {constexpr int i2c_freq=100000;}}}
 constexpr int papermono_probe_addr=0x38;
@@ -315,6 +316,54 @@ int main(){int tx=0;for(bool final:{false,true})for(bool response:{false,true})f
  bool ok=refine_member(r,ctx);assert(ok==((bus&&response)||final));
  assert(r.def==&desc_papermono.def&&r.provisional==(final&&!(bus&&response)));
  assert(probes==(bus?(response?1:200):0));assert(papermono_power==1&&stopwatch_power==0);
+ if(final&&!(bus&&response))assert(std::strcmp(last_reason,bus?"PaperMono touch unanswered":"PaperMono internal I2C unavailable")==0);
 }}
 `,"PM1 post-power refine");
+});
+
+test("production prepare retries failed power before pending member refinement", async () => {
+ const source=await fs.readFile(path.join(src,"board_detect.inl"),"utf8");
+ const prepare=body(source,'bool prepare(const board_desc_t& desc,');
+ const extended=common.replace('#define ESP_LOGW', '#define ESP_LOGE(...) ((void)0)\n#define ESP_LOGW')
+ .replace('struct board_desc_t {board_def_t def;};',`enum class reset_kind_t {none,i2c_regs};
+ struct board_desc_t {board_def_t def;struct {const int* variants;} power;
+ struct {int hw_port,sda,scl;} internal_i2c;struct {reset_kind_t kind;} reset;};`)
+ .replace('bool final_attempt=false;','bool final_attempt=false; int* transaction=nullptr; int i2c_port_probe=0;');
+ await compileRun(extended+`
+int power_calls,refine_calls,sd_calls,construct_calls;bool fail_power;
+namespace lgfx {namespace i2c {struct value_t {bool has_value() const{return true;}int value() const{return 0;}};
+ bool isInitialized(int){return false;}value_t getPinSDA(int){return {};}
+ value_t getPinSCL(int){return {};}value_t init(int,int,int){return {};}}}
+namespace startup_detail {
+ bool description_valid(const board_desc_t&){return true;}
+ struct i2c_scope_t {bool opened=true;int port=0;i2c_scope_t(int&,int,decltype(board_desc_t::internal_i2c)) {}};
+ bool prepare_power(const board_desc_t&,board_result_t& r,int,bool){++power_calls;r.prepared|=prepared_power;
+ if(fail_power)r.prepared|=prepared_power_failed;return true;}
+ bool prepare_sd_spi(const board_desc_t&,board_result_t&,const prepare_ctx_t&){++sd_calls;return true;}
+ void hold_chip_selects(const board_desc_t&){}
+}
+bool prepare_reset(const board_desc_t&,board_result_t&,const prepare_ctx_t&,int,void*,bool){return true;}
+bool refine_member(board_result_t&,const prepare_ctx_t&){++refine_calls;return true;}
+bool prepare_member(const board_desc_t& desc,board_result_t& result,const prepare_ctx_t& ctx) ${prepare}
+int main(){int tx=0,variant=0;
+ // Pending refine represents both D/D and U/U; no refine represents touch-confirmed members.
+ for(int row:{0,1,2})for(bool final:{false,true})for(bool failed:{false,true})for(bool scoped:{false,true}){
+ board_desc_t desc={{21,"PaperMono",0},{scoped?&variant:nullptr},{-1,47,48},{reset_kind_t::none}};
+ board_result_t r;r.assign(&desc);r.refine=row<2?refine_member:nullptr;
+ prepare_ctx_t ctx;ctx.transaction=&tx;ctx.final_attempt=final;
+ power_calls=refine_calls=sd_calls=construct_calls=0;fail_power=failed;
+ const bool ok=prepare_member(desc,r,ctx);if(ok)++construct_calls;
+ const bool retry=failed&&row<2&&!final;
+ assert(ok==!retry&&construct_calls==int(!retry));assert(power_calls==1);
+ assert(refine_calls==int(row<2&&!failed));assert(sd_calls==int(!retry));
+ assert(r.provisional==(failed&&row<2&&final));
+ assert(bool(r.prepared&prepared_refine)==(row<2&&!retry));
+ if(failed)assert(r.prepared&prepared_power_failed);
+ }
+ // Completed refinement does not turn a confirmed member's power failure into a retry.
+ board_desc_t desc={{21,"PaperMono",0},{nullptr},{-1,47,48},{reset_kind_t::none}};
+ board_result_t r;r.assign(&desc);r.refine=refine_member;r.prepared=prepared_power|prepared_power_failed|prepared_refine;
+ prepare_ctx_t ctx;ctx.transaction=&tx;assert(prepare_member(desc,r,ctx));assert(!r.provisional);
+}
+`,"pending-refinement power failure");
 });

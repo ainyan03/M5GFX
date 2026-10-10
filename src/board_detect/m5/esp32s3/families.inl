@@ -500,9 +500,11 @@ namespace m5
         } while (lgfx::millis() - started < 200);
       }
       if (!ctx.final_attempt) { return false; }
-      // Keep the powered member; never run a second member's power sequence.
+      // Keep the powered member; no second member's power sequence in this attempt.
+      // Later attempts can switch only after unanswered touch with D/D or U/U.
       result.provisional = true;
-      ESP_LOGW("board_detect_m5", "PaperMono touch unanswered; using %s for this boot",
+      ESP_LOGW("board_detect_m5", "%s; using %s for this boot",
+               i2c.opened ? "PaperMono touch unanswered" : "PaperMono internal I2C unavailable",
                result.def->name);
       return true;
     }

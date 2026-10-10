@@ -94,7 +94,8 @@ namespace pmic_ops
     ops::i2c_write8(0, 0x09, 0x00), ops::i2c_write8(0, 0x0A, 0x00),
     ops::i2c_bit_on(0, 0x06, 0x17),
     ops::gpio_set_mode(39, ops::gpio_mode_t::output), ops::gpio_write_high(39),
-    // IOE1 boots later than PM1; wait only in this member's power sequence.
+    // IOE1 boots later than PM1. This power-stage wait starts a relative
+    // 500 ms deadline for new probes; an in-flight I2C call may overrun it.
     ops::i2c_wait_ready(1, 500, 1),
     ops::i2c_write8(1, 0x23, 0x00), ops::i2c_bit_off(1, 0x13, 0x9D),
     ops::i2c_bit_on(1, 0x03, 0x9D), ops::i2c_bit_on(1, 0x05, 0x99),
@@ -163,7 +164,8 @@ namespace pmic_ops
     ops::i2c_write8(0, 0x09, 0x00), ops::i2c_write8(0, 0x0A, 0x00),
     ops::i2c_bit_on(0, 0x06, 0x17),
     ops::gpio_set_mode(16, ops::gpio_mode_t::output), ops::gpio_write_high(16),
-    // IOE1 boots later than PM1; wait only in this member's power sequence.
+    // IOE1 boots later than PM1. This power-stage wait starts a relative
+    // 500 ms deadline for new probes; an in-flight I2C call may overrun it.
     ops::i2c_wait_ready(1, 500, 1),
     ops::i2c_bit_on(1, 0x03, 0x34), ops::i2c_bit_on(1, 0x04, 0x30),
     ops::i2c_bit_on(1, 0x05, 0x04), ops::i2c_bit_on(1, 0x06, 0x30),
