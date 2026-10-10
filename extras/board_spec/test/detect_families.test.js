@@ -27,7 +27,7 @@ test("production Core2 and Cardputer selectors cover preference, hint and observ
   const core = await fs.readFile(path.join(src,"m5/esp32_d0wdq6.inl"),"utf8");
   const families = await fs.readFile(path.join(src,"m5/esp32s3/families.inl"),"utf8");
   const helper = body(detector,"static bool select_provisional_member");
-  const begin=core.indexOf('if (!select_provisional_member('), end=core.indexOf('\n      log_panel_variant',begin);
+  const begin=core.indexOf('const auto possible = [&](board_id_t id)'), end=core.indexOf('\n      log_panel_variant',begin);
   const selectCore=core.slice(begin, end).replace(/\n      }\s*$/, "");
   const card=body(families.slice(families.indexOf('class cardputer_family_detector_t')),"bool confirm(");
   await compileRun(common+`
@@ -45,6 +45,7 @@ pulls_t recover_held_sda_and_resample(probe_ctx_t&,pulls_t p,std::uint64_t,int,i
 bool probe_i2c_read(probe_ctx_t&,int,int,int,int,std::uint8_t*,int,int,int,bool) {return false;}
 bool probe_i2c_ack(probe_ctx_t&,int,int,int) {return false;}
 bool select_provisional_member(const prepare_ctx_t& ctx,board_result_t* result,const board_desc_t* preferred_if_possible,const board_desc_t* hinted_if_possible,const board_desc_t* family_default,const char* why) ${helper}
+namespace generated_options {namespace core2 {constexpr unsigned new_pmic=1;}}
 struct tx_t {void restore_start(int) {}};
 bool core_select(prepare_ctx_t ctx,board_result_t& result) {tx_t tx; struct wrapper: prepare_ctx_t {tx_t* transaction;}; wrapper wrapped; static_cast<prepare_ctx_t&>(wrapped)=ctx; wrapped.transaction=&tx; const auto signals=0;
  ${selectCore.replaceAll('ctx.transaction','wrapped.transaction')}
@@ -52,10 +53,10 @@ bool core_select(prepare_ctx_t ctx,board_result_t& result) {tx_t tx; struct wrap
 }
 bool card_select(probe_ctx_t& ctx,board_result_t* result) ${card}
 int main() {
- for(bool hint_present: {false,true}) for(board_id_t preferred: {board_id_t(0),board_id_t(1),board_id_t(2),board_id_t(42)}) {
-  prepare_ctx_t ctx;ctx.preferred=preferred;ctx.hint=hint_present ? 2:0;board_result_t r;
+ for(bool new_pmic: {false,true}) for(bool hint_present: {false,true}) for(board_id_t preferred: {board_id_t(0),board_id_t(1),board_id_t(2),board_id_t(42)}) {
+  prepare_ctx_t ctx;ctx.preferred=preferred;ctx.hint=hint_present ? 2:0;board_result_t r;r.option=new_pmic?generated_options::core2::new_pmic:0;
   ctx.final_attempt=false;assert(!core_select(ctx,r));ctx.final_attempt=true;assert(core_select(ctx,r));
-  assert(r.provisional);assert(r.def->id==(preferred==1||preferred==2 ? preferred:hint_present ? 2:1));
+  assert(r.provisional);assert(r.def->id==(preferred==1 ? 1:preferred==2&&!new_pmic ? 2:hint_present&&!new_pmic ? 2:1));
   detect_outcome_t out;out.result=r;const bool setup=finalize_prepared_result(out,preferred);
   assert(setup==(preferred==0||preferred==r.def->id));assert(!should_persist_detection(out,0));
  }

@@ -281,11 +281,16 @@ namespace m5
           ctx.transaction->restore_start(signals);
           return false;
         }
+        const auto possible = [&](board_id_t id) -> const board_desc_t*
+        {
+          if (id == desc_core2.def.id) { return &desc_core2; }
+          // Tough has no AXP2101 variant; an explicit preference cannot negate it.
+          if (id == desc_tough.def.id
+           && !(result.option & generated_options::core2::new_pmic)) { return &desc_tough; }
+          return nullptr;
+        };
         if (!select_provisional_member(ctx, &result,
-                               ctx.preferred == desc_tough.def.id ? &desc_tough
-                                 : ctx.preferred == desc_core2.def.id ? &desc_core2 : nullptr,
-                               ctx.hint == desc_tough.def.id ? &desc_tough
-                                 : ctx.hint == desc_core2.def.id ? &desc_core2 : nullptr,
+                               possible(ctx.preferred), possible(ctx.hint),
                                &desc_core2, "Core2/Tough touch unidentified"))
         {
           ctx.transaction->restore_start(signals);
