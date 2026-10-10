@@ -950,8 +950,8 @@ namespace m5
       // that populate either NC net.
       constexpr std::uint64_t g21 = std::uint64_t(1) << 21;
       if (!(probe_pin_pulls(ctx, g21).pulldown_high & g21)) { return false; }
-      // Release for 128 us instead of 32 us to reject slower weak pulls as NC.
-      const auto socket_pulls = probe_pin_pulls(ctx, (1ULL << 38) | (1ULL << 39), pull_release_us);
+      // Release for 128 us instead of 32 us so a slow weak pull is no longer mistaken for NC.
+      const auto socket_pulls = probe_pin_pulls(ctx, (std::uint64_t(1) << 38) | (std::uint64_t(1) << 39), pull_release_us);
       if (classify_pin_pull(socket_pulls, 38) != pull_class_t::floating
        || classify_pin_pull(socket_pulls, 39) != pull_class_t::floating)
       { return false; }

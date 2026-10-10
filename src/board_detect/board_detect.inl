@@ -677,6 +677,7 @@ namespace board_detect
   {
     static constexpr std::size_t max_pins = 64;
     pin_pull_result_t result;
+    result.release_sampled = release_us != 0;
     for (std::size_t pin = 0; pin < max_pins; ++pin)
     {
       const std::uint64_t bit = std::uint64_t(1) << pin;

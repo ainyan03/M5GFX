@@ -19,14 +19,16 @@ int main(){
  pull_class_t::down,pull_class_t::conflict,pull_class_t::conflict,pull_class_t::up,
  pull_class_t::down,pull_class_t::conflict,pull_class_t::floating,pull_class_t::up,
  pull_class_t::down,pull_class_t::conflict,pull_class_t::weak_up,pull_class_t::up};
- for(int pin:{0,17,63})for(unsigned sample=0;sample<16;++sample){
- const auto bit=std::uint64_t(1)<<pin;pin_pull_result_t r;
+ for(int pin:{0,17,63})for(unsigned sample=0;sample<16;++sample)for(bool released:{false,true}){
+ const auto bit=std::uint64_t(1)<<pin;pin_pull_result_t r;r.release_sampled=released;
  // Other bits must not affect classification of this pin.
  r.pulldown_high=(sample&1)?~std::uint64_t(0):~bit;
  r.pullup_high=(sample&2)?~std::uint64_t(0):~bit;
  r.pulldown_release_high=(sample&4)?~std::uint64_t(0):~bit;
  r.pullup_release_high=(sample&8)?~std::uint64_t(0):~bit;
- assert(classify_pin_pull(r,pin)==expected[sample]);
+ const auto value=classify_pin_pull(r,pin);
+ assert(value==(!released&&(sample&3)==2?pull_class_t::pull_dependent:expected[sample]));
+ if(!released)assert(value!=pull_class_t::weak_up&&value!=pull_class_t::weak_down&&value!=pull_class_t::floating);
  }
 }
 `,"release classifications");
@@ -62,7 +64,7 @@ int main(){tx_t tx;probe_ctx_t ctx={&tx};const std::uint64_t mask=(1ull<<3)|(1ul
  {9,0,0},{9,1,10},{9,2,1},{9,0,1},{9,1,10},{9,2,0},{9,3,0}};
  assert(events==expected_legacy&&cursor==4);
  assert(legacy.pulldown_high==(1ull<<9)&&legacy.pullup_high==(1ull<<3));
- assert(legacy.pulldown_release_high==0&&legacy.pullup_release_high==0);
+ assert(legacy.pulldown_release_high==0&&legacy.pullup_release_high==0&&!legacy.release_sampled);
  events.clear();cursor=0;probe_pin_pulls(ctx,mask,0);assert(events==expected_legacy&&cursor==4);
  events.clear();samples={false,false,true,true,true,false,false,true};cursor=0;
  const auto released=probe_pin_pulls(ctx,mask,128);
@@ -71,7 +73,7 @@ int main(){tx_t tx;probe_ctx_t ctx={&tx};const std::uint64_t mask=(1ull<<3)|(1ul
  {9,0,0},{9,1,10},{9,2,1},{9,0,2},{9,1,128},{9,2,0},{9,0,1},{9,1,10},{9,2,0},{9,0,2},{9,1,128},{9,2,1},{9,3,0}};
  assert(events==expected_release&&cursor==8);
  assert(released.pulldown_high==(1ull<<9)&&released.pullup_high==(1ull<<3));
- assert(released.pulldown_release_high==0&&released.pullup_release_high==mask);
+ assert(released.pulldown_release_high==0&&released.pullup_release_high==mask&&released.release_sampled);
  assert(classify_pin_pull(released,3)==pull_class_t::floating);
  assert(classify_pin_pull(released,9)==pull_class_t::conflict);
  events.clear();cursor=0;probe_pin_pulls(ctx,0,128);assert(events.empty()&&cursor==0);
@@ -103,7 +105,7 @@ int main(){
  probe_ctx_t ctx;assert(!signature_member(ctx)&&probes==0&&ctx.candidate==nullptr);
 #else
  for(unsigned a=0;a<16;++a)for(unsigned b=0;b<16;++b)for(bool key:{false,true}){
- socket={};for(int pin:{38,39}){const unsigned sample=pin==38?a:b;const auto bit=1ull<<pin;
+ socket={};socket.release_sampled=true;for(int pin:{38,39}){const unsigned sample=pin==38?a:b;const auto bit=1ull<<pin;
  if(sample&1)socket.pulldown_high|=bit;if(sample&2)socket.pullup_high|=bit;
  if(sample&4)socket.pulldown_release_high|=bit;if(sample&8)socket.pullup_release_high|=bit;}
  probes=0;pressed=key;probe_ctx_t ctx;const bool floating=a==10&&b==10;

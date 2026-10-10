@@ -493,8 +493,9 @@ namespace board_detect
   // in both masks, D in neither, F only in pullup_high, and X only in
   // pulldown_high. Every call measures the requested pins again.
   static constexpr std::uint32_t pull_release_us = 128;
-  // Zero preserves the legacy pull-only sequence and timing. Release masks
-  // are sampled only with a nonzero delay; classification requires those samples.
+  // Zero preserves the legacy pull-only sequence and timing.
+  // Release masks contain levels read without pulls after each bias; release_sampled
+  // marks those masks as measured only when release_us is nonzero.
   pin_pull_result_t probe_pin_pulls(probe_ctx_t& ctx, std::uint64_t pin_mask,
                                     std::uint32_t release_us = 0);
 

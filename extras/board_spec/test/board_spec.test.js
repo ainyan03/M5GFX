@@ -622,7 +622,7 @@ test("DualKey requires NC pins to float and treats a pressed second key as a can
   assert.match(order, /esp32s3_detectors_qfn56\[] = \{[\s\S]*?&dualkey_detector,[\s\S]*?nullptr/);
   assert.doesNotMatch(order, /&stamps3_detector/);
   assert.doesNotMatch(families, /ctx\.candidate = &desc_stamps3\.def/);
-  assert.match(families, /probe_pin_pulls\(ctx, \(1ULL << 38\) \| \(1ULL << 39\), pull_release_us\)[\s\S]*?classify_pin_pull\(socket_pulls, 38\) != pull_class_t::floating[\s\S]*?classify_pin_pull\(socket_pulls, 39\) != pull_class_t::floating/);
+  assert.match(families, /probe_pin_pulls\(ctx, \(std::uint64_t\(1\) << 38\) \| \(std::uint64_t\(1\) << 39\), pull_release_us\)[\s\S]*?classify_pin_pull\(socket_pulls, 38\) != pull_class_t::floating[\s\S]*?classify_pin_pull\(socket_pulls, 39\) != pull_class_t::floating/);
   assert.doesNotMatch(detector, /bool probe_pin_floating\(/);
   assert.match(families, /ctx\.candidate = &desc_dualkey\.def;[\s\S]*?return false;/);
 });
