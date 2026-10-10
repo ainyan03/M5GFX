@@ -659,7 +659,7 @@ namespace m5
       // The legacy block skipped the PM1 read when hinted PaperS3 and the
       // GT911 read when hinted PaperDIY; each skip saves up to 200 ms or two
       // touch-controller transactions. Restrict these skips to the first attempt.
-      if (ctx.attempt != 0 || ctx.hint != desc_papers3.def.id)
+      if (ctx.attempt != 0 || ctx.final_attempt || ctx.hint != desc_papers3.def.id)
       {
         std::uint8_t pm1_id[2] = {};
         if (probe_i2c_read(ctx, wiring::papers3::internal_i2c_sda,
@@ -672,7 +672,7 @@ namespace m5
           return true;
         }
       }
-      if (ctx.attempt != 0 || ctx.hint != desc_paperdiy.def.id)
+      if (ctx.attempt != 0 || ctx.final_attempt || ctx.hint != desc_paperdiy.def.id)
       {
         // An ACK alone is not enough to identify the PaperS3 touch controller
         // (DinMeter shares these pins): require the GT911 product ID string.

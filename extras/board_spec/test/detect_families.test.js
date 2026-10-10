@@ -79,6 +79,8 @@ test("production SPI and Paper hint restrictions recover a different member on a
  const families=await fs.readFile(path.join(src,"m5/esp32s3/families.inl"),"utf8");
  const spi=body(detector.slice(detector.indexOf('class spi_id_detector_t')),'bool confirm(');
  const paper=body(families.slice(families.indexOf('class paper_family_detector_t')),'bool confirm(');
+ const main=await fs.readFile(path.join(src,"../M5GFX.cpp"),"utf8");
+ const compat=body(main,"board_t M5GFX::autodetect(").replaceAll("board_t::board_unknown","board_id_unknown");
  await compileRun(common+`
 struct member_t {const board_desc_t* desc;};
 namespace wiring {namespace papers3 {constexpr int internal_i2c_sda=0,internal_i2c_scl=1;}}
@@ -97,14 +99,42 @@ struct spi_t {
  bool confirm(probe_ctx_t& ctx,board_result_t* result) const ${spi}
 };
 bool paper_confirm(probe_ctx_t& ctx,board_result_t* result) ${paper}
+using board_t=board_id_t;
+namespace board_detect=m5gfx::board_detect;
+namespace m5gfx {namespace board_detect {namespace m5 {
+ struct display_parts_t {int* bus=nullptr;int* panel=nullptr;int* light=nullptr;int* touch=nullptr;};
+}}}
+struct package_t {const int* detectors=nullptr;bool conditional_pins_unavailable=false;};
+package_t select_detection_package(bool) {static const int family=1;package_t p;p.detectors=&family;return p;}
+bool reject_detected_setup(board_t) {return false;}
+template<class Setup> detect_outcome_t run_detection_attempt(const int*,const detect_request_t& request,bool final,Setup) {
+ probe_ctx_t ctx;ctx.hint=request.hint;ctx.attempt=request.attempt;ctx.final_attempt=final;detect_outcome_t out;
+ if(actual<3 ? spi_t{}.confirm(ctx,&out.result):paper_confirm(ctx,&out.result)) {
+  finalize_prepared_result(out,request.preferred);out.setup_succeeded=true;
+ }
+ return out;
+}
+struct M5GFX {
+ struct {board_t fallback_board=0;} _detect_config;
+ struct {int* get() {return nullptr;}} _panel_last;
+ void panel(int*) {}
+ bool _adopt_detected_parts(int*,int*,int*,int*) {return true;}
+ board_t autodetect(bool use_reset,board_t board,bool final_attempt,bool* transient_fallback,bool* no_signature,board_t* candidate_board) ${compat}
+};
 int main() {
  for(board_id_t target: {board_id_t(1),board_id_t(2),board_id_t(8),board_id_t(9)}) {
   actual=target;probe_ctx_t ctx;ctx.hint=target<3 ? 3-target:17-target;board_result_t r;
-  const auto confirm=[&](const detect_request_t& req,bool) {ctx.attempt=req.attempt;ctx.hint=req.hint;detect_outcome_t out;
+  const auto confirm=[&](const detect_request_t& req,bool) {ctx.attempt=req.attempt;ctx.hint=req.hint;ctx.final_attempt=req.attempt+1==req.max_attempts;detect_outcome_t out;
     bool match=target<3 ? spi_t{}.confirm(ctx,&out.result):paper_confirm(ctx,&out.result);
     if(match) {finalize_prepared_result(out,0);out.setup_succeeded=true;}return out;};
   detect_request_t req;req.max_attempts=5;req.hint=ctx.hint;auto out=run_detection_session(req,confirm);
   assert(out.setup_succeeded&&out.result.def->id==target&&out.attempts==2);assert(out.verdict==verdict_t::confirmed);
+  ctx.attempt=0;ctx.final_attempt=true;board_result_t final_result;
+  assert(target<3 ? spi_t{}.confirm(ctx,&final_result):paper_confirm(ctx,&final_result));
+  assert(final_result.def->id==target);
+  M5GFX gfx;board_t candidate=0;bool transient=false,no_signature=false;
+  assert(gfx.autodetect(false,ctx.hint,false,&transient,&no_signature,&candidate)==0);
+  assert(gfx.autodetect(false,ctx.hint,true,&transient,&no_signature,&candidate)==target);
  }
 }
 `,"retry hint restrictions");

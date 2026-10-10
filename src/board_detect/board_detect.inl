@@ -1704,7 +1704,7 @@ namespace board_detect
     bool confirm(probe_ctx_t& ctx, board_result_t* result) const override
     {
       if (shared_id_read_) { return probe_family(ctx, result); }
-      if (ctx.attempt == 0 && ctx.hint != board_id_unknown)
+      if (ctx.attempt == 0 && !ctx.final_attempt && ctx.hint != board_id_unknown)
       {
         for (std::uint8_t index = 0; index < member_count_; ++index)
         {
