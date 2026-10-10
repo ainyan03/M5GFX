@@ -1265,8 +1265,13 @@ namespace m5gfx
        && outcome.result.candidate != nullptr)
       { *candidate_board = static_cast<board_t>(outcome.result.candidate->id); }
     }
+    // These legacy chip entries did not export a transient output, even on success.
+#if !defined(CONFIG_IDF_TARGET_ESP32C5) && !defined(CONFIG_IDF_TARGET_ESP32C61)
     if (outcome.setup_succeeded && transient_fallback != nullptr)
     { *transient_fallback = outcome.result.transient_fallback; }
+#else
+    (void)transient_fallback;
+#endif
     panel(_panel_last.get());
     return outcome.setup_succeeded ? static_cast<board_t>(outcome.result.def->id)
                                    : board_t::board_unknown;
