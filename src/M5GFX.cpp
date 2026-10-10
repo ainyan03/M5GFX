@@ -1155,6 +1155,21 @@ namespace m5gfx
                                   static_cast<board_t>(desc.def.id), setup);
   }
 
+  template <class SetupDetected>
+  static board_detect::detect_outcome_t run_fixed_detection_session(
+    const board_detect::m5::board_entry_t& entry, bool allow_reset, SetupDetected setup)
+  {
+    board_detect::detect_outcome_t outcome;
+    for (std::uint8_t attempt = 0; attempt < 5; ++attempt)
+    {
+      if (attempt == 3) { allow_reset = true; }
+      outcome = run_fixed_detection(entry, allow_reset, setup);
+      outcome.attempts = attempt + 1;
+      if (outcome.setup_succeeded) { return outcome; }
+    }
+    return outcome;
+  }
+
   bool M5GFX::_adopt_detected_parts(lgfx::IBus* bus, lgfx::Panel_Device* panel_part,
                                     lgfx::ILight* light, lgfx::ITouch* touch)
   {
@@ -1222,7 +1237,7 @@ namespace m5gfx
       }
       // Acceptance is independent of display construction; a failed init may retry.
       _fixed_board = _detect_config.fixed_board;
-      const auto outcome = run_fixed_detection(*entry, use_reset,
+      const auto outcome = run_fixed_detection_session(*entry, use_reset,
         [this](board_detect::m5::display_parts_t& parts, board_t setup_board)
         {
           return !reject_detected_setup(setup_board)
